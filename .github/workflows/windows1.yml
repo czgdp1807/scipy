@@ -51,7 +51,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-              C:\"Program Files (x86)"\Intel\oneAPI
+              C:\"Program Files (x86)"\Intel\oneAPI\*
           key: install-${{ env.CACHE_NUMBER }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
       - name: install
         if: steps.cache-install.outputs.cache-hit != 'true'
