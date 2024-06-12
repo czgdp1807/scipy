@@ -79,5 +79,4 @@ jobs:
 
       - name: Build
         run: |
-          set CC=cl
           python dev.py build -C-Duse-pythran=false
