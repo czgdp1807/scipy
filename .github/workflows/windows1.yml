@@ -76,4 +76,4 @@ jobs:
 
       - name: Build
         run: |
-          python dev.py build -C-Duse-pythran=false -C--vsenv
+          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
