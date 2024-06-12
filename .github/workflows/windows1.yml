@@ -61,7 +61,7 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsx86_amd64.bat"
-          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+          C:\Program Files (x86)\Intel\oneAPI\setvars.bat
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
