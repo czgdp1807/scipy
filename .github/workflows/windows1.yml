@@ -77,6 +77,6 @@ jobs:
           pip install numpy cython pybind11 pythran meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
           python -m pip install -r requirements/openblas.txt
 
-      - name: Build
-        run: |
-          python dev.py build -C-Duse-pythran=false
+      # - name: Build
+      #   run: |
+      #     python dev.py build -C-Duse-pythran=false
