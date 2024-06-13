@@ -50,7 +50,6 @@ jobs:
       - name: Get Date
         id: get-date
         run: echo "today=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
-        shell: bash
 
       - name: Setup Conda
         uses: conda-incubator/setup-miniconda@v3
@@ -98,4 +97,4 @@ jobs:
       - name: Build
         run: |
           conda activate scipy-dev
-          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+          python dev.py build -C-Duse-pythran=false -C--vsenv
