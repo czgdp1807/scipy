@@ -76,7 +76,6 @@ jobs:
 
       - name: Update Conda Environment
         run: mamba env update -n scipy-dev -f environment_win.yml
-        if: steps.envcache.outputs.cache-hit != 'true'
 
       - name: cache install
         id: cache-install
