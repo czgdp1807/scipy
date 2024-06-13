@@ -47,18 +47,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: 'x64'
-          cache: 'pip'
-          cache-dependency-path: 'environment.yml'
+      - name: Get Date
+        id: get-date
+        run: echo "today=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
+        shell: bash
 
-      - name: pip-packages
-        run: |
-          pip install numpy cython pybind11 pythran meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
-          python -m pip install -r requirements/openblas.txt
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.12
+          channels: conda-forge
+          channel-priority: true
+          activate-environment: scipy-dev
+          use-only-tar-bz2: false
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          use-mamba: true
+
+      - name: Cache conda
+        uses: actions/cache@v4
+        env:
+          # Increase this value to reset cache if environment.yml has not changed
+          CACHE_NUMBER: 1
+        with:
+          path: ${{ env.CONDA }}/envs/scipy-dev
+          key:
+            ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+        id: envcache
+
+      - name: Update Conda Environment
+        run: mamba env update -n scipy-dev -f environment_win.yml
+        if: steps.envcache.outputs.cache-hit != 'true'
 
       - name: cache install
         id: cache-install
@@ -76,12 +95,7 @@ jobs:
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Install rtools (mingw-w64)
-        run: |
-          choco install rtools -y --no-progress --force --version=4.0.0.20220206
-          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
-          RefreshEnv.cmd
-
       - name: Build
         run: |
+          conda activate scipy-dev
           python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
