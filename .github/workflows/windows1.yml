@@ -46,6 +46,25 @@ jobs:
         uses: actions/checkout@v4.1.1
         with:
           submodules: recursive
+
+      - name: Install rtools (mingw-w64)
+        run: |
+          choco install rtools -y --no-progress --force --version=4.0.0.20220206
+          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+          cache: 'pip'
+          cache-dependency-path: 'environment.yml'
+
+      - name: pip-packages
+        run: |
+          pip install numpy cython pybind11 pythran meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
+          python -m pip install -r requirements/openblas.txt
+
       - name: cache install
         id: cache-install
         uses: actions/cache@v3
@@ -61,23 +80,6 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: 'x64'
-          cache: 'pip'
-          cache-dependency-path: 'environment.yml'
-
-      - name: Install rtools (mingw-w64)
-        run: |
-          choco install rtools -y --no-progress --force --version=4.0.0.20220206
-          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
-
-      - name: pip-packages
-        run: |
-          pip install numpy cython pybind11 pythran meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
-          python -m pip install -r requirements/openblas.txt
 
       - name: Build
         run: |
