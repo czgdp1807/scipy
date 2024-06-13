@@ -51,17 +51,11 @@ jobs:
         id: get-date
         run: echo "today=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
 
-      - name: Setup Conda
-        uses: conda-incubator/setup-miniconda@v3
+      - uses: mamba-org/setup-micromamba@v1.8.0
         with:
-          python-version: 3.12
-          channels: conda-forge
-          channel-priority: true
-          activate-environment: scipy-dev
-          use-only-tar-bz2: false
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
-          use-mamba: true
+          environment-file: environment_win.yml
+          create-args: >-
+            python=3.12
 
       - name: Cache conda
         uses: actions/cache@v4
@@ -71,11 +65,8 @@ jobs:
         with:
           path: ${{ env.CONDA }}/envs/scipy-dev
           key:
-            ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+            ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment_win.yml') }}
         id: envcache
-
-      - name: Update Conda Environment
-        run: mamba env update -n scipy-dev -f environment_win.yml
 
       - name: cache install
         id: cache-install
@@ -92,10 +83,6 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
-
-      - name: Activate environment
-        run: |
-          conda activate scipy-dev
 
       - name: Build
         run: |
