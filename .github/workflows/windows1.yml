@@ -47,12 +47,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install rtools (mingw-w64)
-        run: |
-          choco install rtools -y --no-progress --force --version=4.0.0.20220206
-          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
-          RefreshEnv.cmd
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -81,6 +75,12 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+
+      - name: Install rtools (mingw-w64)
+        run: |
+          choco install rtools -y --no-progress --force --version=4.0.0.20220206
+          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
+          RefreshEnv.cmd
 
       - name: Build
         run: |
