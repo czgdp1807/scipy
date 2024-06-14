@@ -86,6 +86,7 @@ jobs:
 
       - name: Activate environment
         run: |
+          C:\Users\runneradmin\micromamba-bin\micromamba.exe shell reinit --shell cmd.exe
           C:\Users\runneradmin\micromamba-bin\micromamba.exe activate scipy-dev
 
       # - name: Build
