@@ -79,21 +79,21 @@ jobs:
           pip install -r requirements/openblas.txt
         if: steps.envcache.outputs.cache-hit != 'true'
 
-      # - name: cache install
-      #   id: cache-install
-      #   uses: actions/cache@v3
-      #   with:
-      #     path: |
-      #         C:\Program Files (x86)\Intel\oneAPI\
-      #     key: install-${{ env.CACHE_NUMBER }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
-      # - name: install
-      #   if: steps.cache-install.outputs.cache-hit != 'true'
-      #   run: |
-      #     echo %WINDOWS_BASEKIT_URL%
-      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
-      # - name: Initialise Intel oneAPI
-      #   run: |
-      #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+      - name: cache install
+        id: cache-install
+        uses: actions/cache@v3
+        with:
+          path: |
+              C:\Program Files (x86)\Intel\oneAPI\
+          key: install-${{ env.CACHE_NUMBER }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+      - name: install
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_BASEKIT_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+      - name: Initialise Intel oneAPI
+        run: |
+          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
       - name: Build
         run: |
