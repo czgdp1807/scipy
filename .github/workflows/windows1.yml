@@ -59,8 +59,8 @@ jobs:
       - run: conda --version
       - run: which python
 
-      - name: Update Conda Environment
-        run: conda env update -n scipy-dev -f environment_win.yml
+      - name: Create Conda Environment
+        run: conda env create -f environment_win.yml
 
       # - name: Cache conda
       #   uses: actions/cache@v4
