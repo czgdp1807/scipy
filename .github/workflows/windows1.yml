@@ -94,4 +94,4 @@ jobs:
       - name: Build
         run: |
           which python
-          python dev.py build -C-Duse-pythran=false -C--vsenv
+          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
