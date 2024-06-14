@@ -59,6 +59,10 @@ jobs:
       - run: conda --version
       - run: which python
 
+      - name: Install pkg-config
+        run: |
+          conda install conda-forge::pkg-config
+
       - name: pip-packages
         run: |
           pip install numpy==1.23.5 cython pybind11 pythran meson-python meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis pkgconfig
