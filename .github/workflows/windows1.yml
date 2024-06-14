@@ -51,7 +51,7 @@ jobs:
         id: get-date
         run: |
           set mydate=%date:~10,4%%date:~6,2%/%date:~4,2%
-          echo %mydate% >> $GITHUB_OUTPUT
+          echo "%mydate%" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Setup conda
