@@ -14,7 +14,7 @@ permissions:
 
 env:
   WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
-  CACHE_NUMBER: 6
+  WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
   SAMPLES_TAG: 2024.1.0
   COMPILER_VERSION: 2024.1.0
   TBB_VERSION: 2021.12.0
@@ -85,17 +85,19 @@ jobs:
         with:
           path: |
               C:\Program Files (x86)\Intel\oneAPI\
-          key: install-${{ env.CACHE_NUMBER }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+          key: install-${{ env.WINDOWS_BASEKIT_URL }}-${{ env.WINDOWS_HPC_URL }}-compiler
       - name: install
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
           echo %WINDOWS_BASEKIT_URL%
+          echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Build
-        run: |
-          set FC=ifx
-          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+      # - name: Build
+      #   run: |
+      #     set FC=ifx
+      #     python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
