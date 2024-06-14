@@ -95,6 +95,6 @@ jobs:
       #   run: |
       #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      # - name: Build
-      #   run: |
-      #     python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+      - name: Build
+        run: |
+          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
