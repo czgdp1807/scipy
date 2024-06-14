@@ -71,7 +71,7 @@ jobs:
       - name: Cache conda
         uses: actions/cache@v4
         with:
-          path: ${{ env.CONDA }}/envs/scipy-dev
+          path: ${{ env.CONDA_PREFIX }}
           key:
             ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}
         id: envcache
