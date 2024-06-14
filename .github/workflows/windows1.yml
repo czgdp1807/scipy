@@ -71,11 +71,13 @@ jobs:
       - name: Install pkg-config
         run: |
           conda install conda-forge::pkg-config
+        if: steps.envcache.outputs.cache-hit != 'true'
 
       - name: pip-packages
         run: |
           pip install numpy==1.23.5 cython pybind11 pythran meson-python meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
           pip install -r requirements/openblas.txt
+        if: steps.envcache.outputs.cache-hit != 'true'
 
       # - name: cache install
       #   id: cache-install
@@ -93,6 +95,6 @@ jobs:
       #   run: |
       #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Build
-        run: |
-          python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+      # - name: Build
+      #   run: |
+      #     python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
