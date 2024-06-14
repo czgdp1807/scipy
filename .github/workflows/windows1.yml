@@ -56,20 +56,22 @@ jobs:
         with:
           update-conda: true
           python-version: 3.12
-          environment-file: environment_win.yml
       - run: conda --version
       - run: which python
 
-      - name: Cache conda
-        uses: actions/cache@v4
-        env:
-          # Increase this value to reset cache if environment.yml has not changed
-          CACHE_NUMBER: 1
-        with:
-          path: ${{ env.MAMBA_ROOT_PREFIX }}/envs/scipy-dev
-          key:
-            ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment_win.yml') }}
-        id: envcache
+      - name: Update Conda Environment
+        run: cond env update -n scipy-dev -f environment_win.yml
+
+      # - name: Cache conda
+      #   uses: actions/cache@v4
+      #   env:
+      #     # Increase this value to reset cache if environment.yml has not changed
+      #     CACHE_NUMBER: 1
+      #   with:
+      #     path: ${{ env.MAMBA_ROOT_PREFIX }}/envs/scipy-dev
+      #     key:
+      #       ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment_win.yml') }}
+      #   id: envcache
 
       # - name: cache install
       #   id: cache-install
