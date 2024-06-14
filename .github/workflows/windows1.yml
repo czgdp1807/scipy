@@ -91,5 +91,6 @@ jobs:
 
       - name: Build
         run: |
+          conda activate scipy-dev
           which python
           python dev.py build -C-Duse-pythran=false -C--vsenv
