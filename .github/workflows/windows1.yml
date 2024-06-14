@@ -68,16 +68,13 @@ jobs:
           pip install numpy==1.23.5 cython pybind11 pythran meson-python meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
           pip install -r requirements/openblas.txt
 
-      # - name: Cache conda
-      #   uses: actions/cache@v4
-      #   env:
-      #     # Increase this value to reset cache if environment.yml has not changed
-      #     CACHE_NUMBER: 1
-      #   with:
-      #     path: ${{ env.MAMBA_ROOT_PREFIX }}/envs/scipy-dev
-      #     key:
-      #       ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment_win.yml') }}
-      #   id: envcache
+      - name: Cache conda
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CONDA }}/envs/scipy-dev
+          key:
+            ${{ runner.os }}--${{ steps.get-date.outputs.today }}-conda-${{ env.CACHE_NUMBER }}
+        id: envcache
 
       # - name: cache install
       #   id: cache-install
@@ -97,5 +94,4 @@ jobs:
 
       - name: Build
         run: |
-          which python
           python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
