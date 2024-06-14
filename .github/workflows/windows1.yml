@@ -84,11 +84,7 @@ jobs:
       #   run: |
       #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Activate environment
+      - name: Build
         run: |
-          C:\Users\runneradmin\micromamba-bin\micromamba.exe shell reinit --shell cmd.exe
-          C:\Users\runneradmin\micromamba-bin\micromamba.exe activate scipy-dev
-
-      # - name: Build
-      #   run: |
-      #     python dev.py build -C-Duse-pythran=false -C--vsenv
+          which python
+          python dev.py build -C-Duse-pythran=false -C--vsenv
