@@ -58,10 +58,13 @@ jobs:
       - name: Install pkg-config
         run: |
           conda install conda-forge::pkg-config
+          conda install conda-forge::meson
+          conda install conda-forge::meson-python
+          conda install conda-forge::ninja
 
       - name: pip-packages
         run: |
-          pip install numpy==1.23.5 cython pybind11 pythran meson-python meson ninja pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
+          pip install numpy==1.23.5 cython pybind11 pythran pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
           pip install -r requirements/openblas.txt
 
       - name: cache install
@@ -85,8 +88,8 @@ jobs:
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: List down compilers
-        run: dir C:\"Program Files (x86)"\Intel\oneAPI\2024.1\bin
+      - name: Run ifx
+        run: ifx
 
       - name: Build
         run: |
