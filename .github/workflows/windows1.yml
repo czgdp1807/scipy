@@ -88,4 +88,5 @@ jobs:
       - name: Build
         run: |
           set PATH=%PATH%;C:\"Program Files (x86)"\Intel\oneAPI\2024.1\bin
+          set FC=ifx
           python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
