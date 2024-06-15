@@ -85,10 +85,7 @@ jobs:
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Run ifx
-        run:  C:\"Program Files (x86)"\Intel\oneAPI\2024.1\bin\ifx.exe
-
       - name: Build
         run: |
-          set FC=ifx
+          set FC=C:\"Program Files (x86)"\Intel\oneAPI\2024.1\bin\ifx.exe
           python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
