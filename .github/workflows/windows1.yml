@@ -83,7 +83,10 @@ jobs:
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
       - name: Initialise Intel oneAPI
         run: |
-          C:\"Program Files (x86)"\Intel\oneAPI\setvars-vcvarsall.bat
+          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+
+      - name: List down compilers
+        run: dir C:\"Program Files (x86)"\Intel\oneAPI\2024.1\bin
 
       - name: Build
         run: |
