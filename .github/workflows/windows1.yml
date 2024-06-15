@@ -57,10 +57,7 @@ jobs:
 
       - name: Install pkg-config
         run: |
-          conda install conda-forge::pkg-config
-          conda install conda-forge::meson
-          conda install conda-forge::meson-python
-          conda install conda-forge::ninja
+          conda install -c conda-forge pkg-config meson meson-python ninja
 
       - name: pip-packages
         run: |
