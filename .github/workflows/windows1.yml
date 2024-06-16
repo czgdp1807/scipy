@@ -37,7 +37,7 @@ jobs:
     if: >
       needs.get_commit_message.outputs.message == 1
       && (github.repository == 'czgdp1807/scipy' || github.repository == '')
-    runs-on: windows-2019
+    runs-on: windows-latest
     defaults:
       run:
         shell: cmd
@@ -84,7 +84,6 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
-          set PATH=%PATH%;C:\Program Files (x86)\Intel\oneAPI\2024.1\bin
 
       - name: Build
         run: |
