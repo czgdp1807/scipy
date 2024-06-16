@@ -92,7 +92,7 @@ jobs:
       #   run: RefreshEnv.cmd
 
       - name: Print PATH
-        run: echo %PATH%
+        run: $env:path
 
       # - name: Build
       #   run: |
