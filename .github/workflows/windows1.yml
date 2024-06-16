@@ -70,7 +70,7 @@ jobs:
         with:
           path: |
               C:\Program Files (x86)\Intel\oneAPI\
-          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler1
       - name: Install oneAPI Base kit
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
