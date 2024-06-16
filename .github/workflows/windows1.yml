@@ -92,7 +92,7 @@ jobs:
       #   run: RefreshEnv.cmd
 
       - name: Print PATH
-        run: $env:path
+        run: ifx
 
       # - name: Build
       #   run: |
