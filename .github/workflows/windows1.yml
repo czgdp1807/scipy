@@ -84,7 +84,9 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
-          echo %PATH%
+
+      - name: Print PATH
+        run: echo %PATH%
 
       # - name: Build
       #   run: |
