@@ -67,6 +67,12 @@ jobs:
       - name: Reset PATH
         run: set PATH=
 
+      - name: Refresh cmd
+        run: RefreshEnv.cmd
+
+      - name: Print PATH
+        run: echo %PATH%
+
       - name: cache install
         id: cache-install
         uses: actions/cache@v3
