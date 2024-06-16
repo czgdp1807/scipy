@@ -40,29 +40,29 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: powershell
+        shell: cmd
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.1
         with:
           submodules: recursive
 
-      - name: Setup conda
-        uses: s-weigand/setup-conda@v1
-        with:
-          update-conda: true
-          python-version: 3.11
-      - run: conda --version
-      - run: which python
+      # - name: Setup conda
+      #   uses: s-weigand/setup-conda@v1
+      #   with:
+      #     update-conda: true
+      #     python-version: 3.11
+      # - run: conda --version
+      # - run: which python
 
-      - name: Install pkg-config
-        run: |
-          conda install -c conda-forge pkg-config meson meson-python ninja
+      # - name: Install pkg-config
+      #   run: |
+      #     conda install -c conda-forge pkg-config meson meson-python ninja
 
-      - name: pip-packages
-        run: |
-          pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
-          pip install -r requirements/openblas.txt
+      # - name: pip-packages
+      #   run: |
+      #     pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
+      #     pip install -r requirements/openblas.txt
 
       - name: cache install
         id: cache-install
@@ -90,9 +90,6 @@ jobs:
 
       # - name: Refresh cmd
       #   run: RefreshEnv.cmd
-
-      - name: Set PATH
-        run: $env:path = "C:\Program Files (x86)\Intel\oneAPI\tbb\latest\env\..\bin\\;C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\opt\mpi\libfabric\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\bin;C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ippcp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ipp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\dpcpp-ct\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dnnl\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dev-utilities\latest\bin;C:\Program Files (x86)\Intel\oneAPI\debugger\latest\env\\..\opt\debugger\bin;C:\Program Files (x86)\Intel\oneAPI\dal\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib\ocloc;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\host\windows64\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\bin;" + $env:path
 
       - name: Run ifx
         run: ifx
