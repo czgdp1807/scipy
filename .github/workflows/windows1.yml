@@ -84,12 +84,12 @@ jobs:
         run: |
           echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
-      - name: Initialise Intel oneAPI
-        run: |
-          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+      # - name: Initialise Intel oneAPI
+      #   run: |
+      #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
-      - name: Set PATH
-        run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\tbb\latest\env\..\bin\\;C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\opt\mpi\libfabric\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\bin;C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ippcp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ipp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\dpcpp-ct\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dnnl\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dev-utilities\latest\bin;C:\Program Files (x86)\Intel\oneAPI\debugger\latest\env\\..\opt\debugger\bin;C:\Program Files (x86)\Intel\oneAPI\dal\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib\ocloc;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\host\windows64\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+      # - name: Set PATH
+      #   run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\tbb\latest\env\..\bin\\;C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\opt\mpi\libfabric\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\bin;C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ippcp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ipp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\dpcpp-ct\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dnnl\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dev-utilities\latest\bin;C:\Program Files (x86)\Intel\oneAPI\debugger\latest\env\\..\opt\debugger\bin;C:\Program Files (x86)\Intel\oneAPI\dal\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib\ocloc;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\host\windows64\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
