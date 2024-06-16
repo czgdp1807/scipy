@@ -65,7 +65,7 @@ jobs:
       #     pip install -r requirements/openblas.txt
 
       - name: Reset PATH
-        run: set PATH=
+        run: setx /M PATH ""
 
       - name: Refresh cmd
         run: RefreshEnv.cmd
