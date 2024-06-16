@@ -65,37 +65,7 @@ jobs:
       #     pip install -r requirements/openblas.txt
 
       - name: Reset PATH
-        run: setx /M PATH ""
-
-      - name: Refresh cmd
-        run: RefreshEnv.cmd
-
-      - name: Print PATH
-        run: echo %PATH%
-
-      - name: cache install
-        id: cache-install
-        uses: actions/cache@v3
-        with:
-          path: |
-              C:\Program Files (x86)\Intel\
-          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
-      - name: Install oneAPI Base kit
-        if: steps.cache-install.outputs.cache-hit != 'true'
-        run: |
-          echo %WINDOWS_BASEKIT_URL%
-          tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
-      - name: Install oneAPI HPC kit
-        if: steps.cache-install.outputs.cache-hit != 'true'
-        run: |
-          echo %WINDOWS_HPC_URL%
-          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
-      - name: Initialise Intel oneAPI
-        run: |
-          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
-
-      # - name: Set PATH
-      #   run: setx /M PATH "C:\Program Files (x86)\Intel\oneAPI\tbb\latest\env\..\bin\\;C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\opt\mpi\libfabric\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\bin;C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ippcp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ipp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\dpcpp-ct\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dnnl\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dev-utilities\latest\bin;C:\Program Files (x86)\Intel\oneAPI\debugger\latest\env\\..\opt\debugger\bin;C:\Program Files (x86)\Intel\oneAPI\dal\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib\ocloc;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\host\windows64\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\bin;%PATH%"
+        run: echo "PATH=" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # - name: Refresh cmd
       #   run: RefreshEnv.cmd
@@ -103,8 +73,38 @@ jobs:
       - name: Print PATH
         run: echo %PATH%
 
-      - name: Run ifx
-        run: ifx
+      # - name: cache install
+      #   id: cache-install
+      #   uses: actions/cache@v3
+      #   with:
+      #     path: |
+      #         C:\Program Files (x86)\Intel\
+      #     key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+      # - name: Install oneAPI Base kit
+      #   if: steps.cache-install.outputs.cache-hit != 'true'
+      #   run: |
+      #     echo %WINDOWS_BASEKIT_URL%
+      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+      # - name: Install oneAPI HPC kit
+      #   if: steps.cache-install.outputs.cache-hit != 'true'
+      #   run: |
+      #     echo %WINDOWS_HPC_URL%
+      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
+      # - name: Initialise Intel oneAPI
+      #   run: |
+      #     C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
+
+      # - name: Set PATH
+      #   run: setx /M PATH "C:\Program Files (x86)\Intel\oneAPI\tbb\latest\env\..\bin\\;C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\opt\mpi\libfabric\bin;C:\Program Files (x86)\Intel\oneAPI\mpi\latest\env\\..\bin;C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ippcp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\ipp\latest\bin;C:\Program Files (x86)\Intel\oneAPI\dpcpp-ct\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dnnl\latest\env\..\bin;C:\Program Files (x86)\Intel\oneAPI\dev-utilities\latest\bin;C:\Program Files (x86)\Intel\oneAPI\debugger\latest\env\\..\opt\debugger\bin;C:\Program Files (x86)\Intel\oneAPI\dal\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib\ocloc;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\host\windows64\bin;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\opt\oclfpga\bin;%PATH%"
+
+      # - name: Refresh cmd
+      #   run: RefreshEnv.cmd
+
+      # - name: Print PATH
+      #   run: echo %PATH%
+
+      # - name: Run ifx
+      #   run: ifx
 
       # - name: Build
       #   run: |
