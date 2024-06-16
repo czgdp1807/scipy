@@ -48,7 +48,7 @@ jobs:
           submodules: recursive
 
       - name: Reset PATH
-        run: echo "PATH=" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: echo "PATH=PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Setup conda
         uses: s-weigand/setup-conda@v1
