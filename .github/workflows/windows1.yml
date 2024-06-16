@@ -85,6 +85,9 @@ jobs:
         run: |
           C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
+      - name: Refresh cmd
+        run: RefreshEnv.cmd
+
       - name: Print PATH
         run: echo %PATH%
 
