@@ -64,6 +64,9 @@ jobs:
       #     pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
       #     pip install -r requirements/openblas.txt
 
+      - name: Reset PATH
+        run: set PATH=
+
       - name: cache install
         id: cache-install
         uses: actions/cache@v3
