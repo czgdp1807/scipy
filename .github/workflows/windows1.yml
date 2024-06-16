@@ -93,5 +93,5 @@ jobs:
 
       - name: Build
         run: |
-          set FC=ifx
+          echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
           python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
