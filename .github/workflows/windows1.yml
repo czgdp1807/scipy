@@ -91,6 +91,9 @@ jobs:
       # - name: Refresh cmd
       #   run: RefreshEnv.cmd
 
+      - name: Print PATH
+        run: echo %PATH%
+
       - name: Run ifx
         run: ifx
 
