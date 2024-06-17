@@ -72,7 +72,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-              C:\Program Files (x86)\Intel\
+              C:\Program Files (x86)\Intel\oneAPI\compiler
           key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
       - name: Install oneAPI Base kit
         if: steps.cache-install.outputs.cache-hit != 'true'
@@ -84,18 +84,15 @@ jobs:
         run: |
           echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
-      - name: Initialise Intel oneAPI
-        run: |
-          C:\"Program Files (x86)"\Intel\oneAPI\setvars.bat
 
       - name: Set PATH
         run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Set LIB
+        run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Run ifx
-        run: ifx /help
 
       - name: Build
         run: python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
