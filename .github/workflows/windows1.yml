@@ -48,7 +48,7 @@ jobs:
       #     submodules: recursive
 
       - name: See Visual Studio
-        run: dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC"
+        run: dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary"
 
       # - name: Reset PATH
       #   run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
