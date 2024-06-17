@@ -42,64 +42,61 @@ jobs:
       run:
         shell: powershell
     steps:
-      # - name: Checkout
-      #   uses: actions/checkout@v4.1.1
-      #   with:
-      #     submodules: recursive
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+        with:
+          submodules: recursive
+
+      - name: Reset PATH
+        run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Setup conda
+        uses: s-weigand/setup-conda@v1
+        with:
+          update-conda: true
+          python-version: 3.11
+      - run: conda --version
+      - run: which python
+
+      - name: Install packages from conda
+        run: |
+          conda install -c conda-forge pkg-config meson=1.4.0 meson-python=0.16.0 ninja
+
+      - name: pip-packages
+        run: |
+          pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
+          pip install -r requirements/openblas.txt
+
+      - name: cache install
+        id: cache-install
+        uses: actions/cache@v3
+        with:
+          path: |
+              C:\Program Files (x86)\Intel\oneAPI\compiler
+          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+      - name: Install oneAPI Base kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_BASEKIT_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+      - name: Install oneAPI HPC kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_HPC_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
+
+      - name: Set PATH
+        run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set LIB
+        run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: set FC
+        run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: See Visual Studio
         run: C:\"Program Files"\"Microsoft Visual Studio"\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat x64
 
-      # - name: Reset PATH
-      #   run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # - name: Reset LIB
-      #   run: echo "LIB=$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # - name: Setup conda
-      #   uses: s-weigand/setup-conda@v1
-      #   with:
-      #     update-conda: true
-      #     python-version: 3.11
-      # - run: conda --version
-      # - run: which python
-
-      # - name: Install pkg-config
-      #   run: |
-      #     conda install -c conda-forge pkg-config meson=1.4.0 meson-python=0.16.0 ninja
-
-      # - name: pip-packages
-      #   run: |
-      #     pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
-      #     pip install -r requirements/openblas.txt
-
-      # - name: cache install
-      #   id: cache-install
-      #   uses: actions/cache@v3
-      #   with:
-      #     path: |
-      #         C:\Program Files (x86)\Intel\oneAPI\compiler
-      #     key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
-      # - name: Install oneAPI Base kit
-      #   if: steps.cache-install.outputs.cache-hit != 'true'
-      #   run: |
-      #     echo %WINDOWS_BASEKIT_URL%
-      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
-      # - name: Install oneAPI HPC kit
-      #   if: steps.cache-install.outputs.cache-hit != 'true'
-      #   run: |
-      #     echo %WINDOWS_HPC_URL%
-      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
-
-      # - name: Set PATH
-      #   run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # - name: Set LIB
-      #   run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # - name: set FC
-      #   run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # - name: Build
-      #   run: python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
-      #   shell: cmd
+      - name: Build
+        run: python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+        shell: cmd
