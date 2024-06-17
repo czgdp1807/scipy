@@ -50,6 +50,9 @@ jobs:
       - name: Reset PATH
         run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Reset LIB
+        run: echo "LIB=$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Setup conda
         uses: s-weigand/setup-conda@v1
         with:
@@ -94,6 +97,6 @@ jobs:
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build
-        run: python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
-        shell: cmd
+      # - name: Build
+      #   run: python dev.py build -C-Duse-pythran=false -C--vsenv --with-scipy-openblas
+      #   shell: cmd
