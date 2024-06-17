@@ -202,16 +202,16 @@ def gmean(a, axis=0, dtype=None, weights=None):
     2.80668351922014
 
     """
-
-    a = np.asarray(a, dtype=dtype)
+    xp = array_namespace(a, weights)
+    a = xp.asarray(a, dtype=dtype)
 
     if weights is not None:
-        weights = np.asarray(weights, dtype=dtype)
+        weights = xp.asarray(weights, dtype=dtype)
 
     with np.errstate(divide='ignore'):
-        log_a = np.log(a)
+        log_a = xp.log(a)
 
-    return np.exp(np.average(log_a, axis=axis, weights=weights))
+    return xp.exp(_xp_mean(log_a, axis=axis, weights=weights))
 
 
 @_axis_nan_policy_factory(
@@ -288,25 +288,18 @@ def hmean(a, axis=0, dtype=None, *, weights=None):
     1.9029126213592233
 
     """
-    if not isinstance(a, np.ndarray):
-        a = np.array(a, dtype=dtype)
-    elif dtype:
-        # Must change the default dtype allowing array type
-        if isinstance(a, np.ma.MaskedArray):
-            a = np.ma.asarray(a, dtype=dtype)
-        else:
-            a = np.asarray(a, dtype=dtype)
+    a = np.asarray(a, dtype=dtype)
 
-    if np.all(a >= 0):
-        # Harmonic mean only defined if greater than or equal to zero.
-        if weights is not None:
-            weights = np.asanyarray(weights, dtype=dtype)
+    if weights is not None:
+        weights = np.asarray(weights, dtype=dtype)
 
-        with np.errstate(divide='ignore'):
-            return 1.0 / np.average(1.0 / a, axis=axis, weights=weights)
-    else:
-        raise ValueError("Harmonic mean only defined if all elements greater "
-                         "than or equal to zero")
+    if not np.all(a >= 0):
+        message = ("The harmonic mean is only defined if all elements are greater "
+                   "than or equal to zero; otherwise, the result is NaN.")
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+
+    with np.errstate(divide='ignore'):
+        return 1.0 / _xp_mean(1.0 / a, axis=axis, weights=weights)
 
 
 @_axis_nan_policy_factory(
@@ -414,27 +407,18 @@ def pmean(a, p, *, axis=0, dtype=None, weights=None):
     if p == 0:
         return gmean(a, axis=axis, dtype=dtype, weights=weights)
 
-    if not isinstance(a, np.ndarray):
-        a = np.array(a, dtype=dtype)
-    elif dtype:
-        # Must change the default dtype allowing array type
-        if isinstance(a, np.ma.MaskedArray):
-            a = np.ma.asarray(a, dtype=dtype)
-        else:
-            a = np.asarray(a, dtype=dtype)
+    a = np.asarray(a, dtype=dtype)
 
-    if np.all(a >= 0):
-        # Power mean only defined if greater than or equal to zero
-        if weights is not None:
-            weights = np.asanyarray(weights, dtype=dtype)
+    if weights is not None:
+        weights = np.asanyarray(weights, dtype=dtype)
 
-        with np.errstate(divide='ignore'):
-            return np.float_power(
-                np.average(np.float_power(a, p), axis=axis, weights=weights),
-                1/p)
-    else:
-        raise ValueError("Power mean only defined if all elements greater "
-                         "than or equal to zero")
+    if not np.all(a >= 0):
+        message = ("The power mean is only defined if all elements are greater "
+                   "than or equal to zero; otherwise, the result is NaN.")
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return _xp_mean(a**float(p), axis=axis, weights=weights)**(1/p)
 
 
 ModeResult = namedtuple('ModeResult', ('mode', 'count'))
@@ -2194,7 +2178,7 @@ def scoreatpercentile(a, per, limit=(), interpolation_method='fraction',
                       axis=None):
     """Calculate the score at a given percentile of the input sequence.
 
-    For example, the score at `per=50` is the median. If the desired quantile
+    For example, the score at ``per=50`` is the median. If the desired quantile
     lies between two data points, we interpolate between them, according to
     the value of `interpolation`. If the parameter `limit` is provided, it
     should be a tuple (lower, upper) of two values.
@@ -2982,7 +2966,7 @@ def zscore(a, axis=0, ddof=0, nan_policy='propagate'):
            [-0.22095197,  0.24468594,  1.19042819, -1.21416216],
            [-0.82780366,  1.4457416 , -0.43867764, -0.1792603 ]])
 
-    An example with `nan_policy='omit'`:
+    An example with ``nan_policy='omit'``:
 
     >>> x = np.array([[25.11, 30.10, np.nan, 32.02, 43.15],
     ...               [14.95, 16.06, 121.25, 94.35, 29.81]])
@@ -9904,7 +9888,7 @@ def wasserstein_distance_nd(u_values, v_values, u_weights=None, v_weights=None):
     :math:`d_{ij} = d(x_i, y_j)`.
 
     Given :math:`\Gamma`, :math:`D`, :math:`b`, the Monge problem can be
-    tranformed into a linear programming problem by
+    transformed into a linear programming problem by
     taking :math:`A x = b` as constraints and :math:`z = c^T x` as minimization
     target (sum of costs) , where matrix :math:`A` has the form
 
@@ -10605,7 +10589,7 @@ def _rankdata(x, method, return_ties=False):
         # - Functions that use `t` usually don't need to which each element of the
         #   original array is associated with each tie count; they perform a reduction
         #   over the tie counts onnly. The tie counts are naturally computed in a
-        #   sorted order, so this does not unnecesarily reorder them.
+        #   sorted order, so this does not unnecessarily reorder them.
         # - One exception is `wilcoxon`, which needs the number of zeros. Zeros always
         #   have the lowest rank, so it is easy to find them at the zeroth index.
         t = np.zeros(shape, dtype=float)
@@ -10626,7 +10610,7 @@ def expectile(a, alpha=0.5, *, weights=None):
     a : array_like
         Array containing numbers whose expectile is desired.
     alpha : float, default: 0.5
-        The level of the expectile; e.g., `alpha=0.5` gives the mean.
+        The level of the expectile; e.g., ``alpha=0.5`` gives the mean.
     weights : array_like, optional
         An array of weights associated with the values in `a`.
         The `weights` must be broadcastable to the same shape as `a`.
@@ -11014,7 +10998,7 @@ def _xp_mean(x, /, *, axis=None, weights=None, keepdims=False, nan_policy='propa
     interface to be consistent with the rest of `scipy.stats`.
 
     Note that according to the formula, including NaNs with zero weights is not
-    the same as *omitting* NaNs with `nan_policy='omit'`; in the former case,
+    the same as *omitting* NaNs with ``nan_policy='omit'``; in the former case,
     the NaNs will continue to propagate through the calculation whereas in the
     latter case, the NaNs are excluded entirely.
 
