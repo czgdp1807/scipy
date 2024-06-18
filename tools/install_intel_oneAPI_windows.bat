@@ -1,3 +1,4 @@
+REM Reference - https://github.com/oneapi-src/oneapi-ci/blob/master/scripts/install_windows.bat
 REM SPDX-FileCopyrightText: 2022 Intel Corporation
 REM
 REM SPDX-License-Identifier: MIT
