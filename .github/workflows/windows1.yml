@@ -85,18 +85,14 @@ jobs:
           echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
 
-      - name: Run cl
-        run: cl
-        shell: cmd
-
-      - name: Initialise Visual Studio
-        run: tools\activate_VS.bat
-
       - name: Set PATH
         run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # - name: Set LIB
-      #   run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Set PATH for MSVC
+        run: echo "PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\bin\Roslyn;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Team Tools\DiagnosticsHub\Collector;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\ProgramData\chocolatey\bin;C:\Program Files\Git\cmd;C:\Users\czgdp18073\AppData\Local\Microsoft\WindowsApps;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set LIB
+        run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
