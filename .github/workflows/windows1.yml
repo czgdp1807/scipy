@@ -71,11 +71,11 @@ jobs:
         run: |
           echo %WINDOWS_BASEKIT_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
-      - name: Install oneAPI HPC kit
-        if: steps.cache-install.outputs.cache-hit != 'true'
-        run: |
-          echo %WINDOWS_HPC_URL%
-          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
+      # - name: Install oneAPI HPC kit
+      #   if: steps.cache-install.outputs.cache-hit != 'true'
+      #   run: |
+      #     echo %WINDOWS_HPC_URL%
+      #     tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
 
       # The following steps are necessary because calling `.bat` files for Intel oneAPI and
       # MSVC doesn't update the environment on CI. Both `ifx` and `cl` aren't detected resulting
