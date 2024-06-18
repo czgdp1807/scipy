@@ -15,10 +15,10 @@ permissions:
 env:
   WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
   WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
-  SAMPLES_TAG: 2024.1.0
-  COMPILER_VERSION: 2024.1.0
-  TBB_VERSION: 2021.12.0
-  VS_VER: vs2022
+  # SAMPLES_TAG: 2024.1.0
+  # COMPILER_VERSION: 2024.1.0
+  # TBB_VERSION: 2021.12.0
+  # VS_VER: vs2022
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -29,8 +29,8 @@ jobs:
     name: Get commit message
     uses: ./.github/workflows/commit_message.yml
 
-  fast_dev_py_fail_slow:
-    name: fail slow, fast, py3.12/npAny, dev.py
+  msvc_ifx_blas:
+    name: py3.11, dev.py
     needs: get_commit_message
     # Ensure (a) this doesn't run on forks by default, and
     #        (b) it does run with Act locally (`github` doesn't exist there)
@@ -47,8 +47,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Reset PATH
-        run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+      # - name: Reset PATH
+      #   run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Setup conda
         uses: s-weigand/setup-conda@v1
