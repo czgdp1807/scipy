@@ -85,6 +85,10 @@ jobs:
           echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
 
+      - name: Run cl
+        run: cl
+        shell: cmd
+
       - name: Initialise Visual Studio
         run: tools\activate_VS.bat
 
