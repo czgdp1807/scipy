@@ -94,6 +94,9 @@ jobs:
       - name: Set LIB
         run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Set LIB for MSVC
+        run: echo "LIB=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\ATLMFC\lib\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\lib\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Program Files (x86)\Windows Kits\10\\lib\10.0.22621.0\\um\x64;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
 
