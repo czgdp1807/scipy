@@ -95,7 +95,7 @@ jobs:
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Initialise Visual Studio
-        run: C:\"Program Files"\"Microsoft Visual Studio"\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat x64
+        run: tools\activate_VS.bat
         shell: cmd
 
       - name: Run cl
