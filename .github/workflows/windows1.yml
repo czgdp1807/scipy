@@ -87,7 +87,6 @@ jobs:
 
       - name: Initialise Visual Studio
         run: tools\activate_VS.bat
-        shell: cmd
 
       - name: Set PATH
         run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
