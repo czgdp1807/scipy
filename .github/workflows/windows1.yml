@@ -107,5 +107,5 @@ jobs:
         shell: cmd
 
       - name: Test
-        run: python dev.py test
+        run: python dev.py python
         shell: cmd
