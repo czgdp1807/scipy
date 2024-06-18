@@ -37,7 +37,7 @@ jobs:
     if: >
       needs.get_commit_message.outputs.message == 1
       && (github.repository == 'czgdp1807/scipy' || github.repository == '')
-    runs-on: windows-latest
+    runs-on: windows-2022
     defaults:
       run:
         shell: powershell
