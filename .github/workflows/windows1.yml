@@ -1,0 +1,115 @@
+name: Windows tests (MSVC + ifx + OpenBLAS)
+
+on:
+  push:
+    branches:
+      - maintenance/**
+  pull_request:
+    branches:
+      - main
+      - maintenance/**
+
+permissions:
+   contents: read  # to fetch code (actions/checkout)
+
+env:
+  WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
+  WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  get_commit_message:
+    name: Get commit message
+    uses: ./.github/workflows/commit_message.yml
+
+  msvc_ifx_blas:
+    name: py3.11, dev.py
+    needs: get_commit_message
+    # Ensure (a) this doesn't run on forks by default, and
+    #        (b) it does run with Act locally (`github` doesn't exist there)
+    if: >
+      needs.get_commit_message.outputs.message == 1
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+        with:
+          submodules: recursive
+
+      - name: Setup conda
+        uses: s-weigand/setup-conda@v1
+        with:
+          update-conda: true
+          python-version: 3.11
+      - run: conda --version
+      - run: which python
+
+      - name: Install packages from conda
+        run: |
+          conda install -c conda-forge pkg-config meson=1.4.0 meson-python=0.16.0 ninja openblas libblas=*=*openblas
+
+      - name: pip-packages
+        run: |
+          pip install numpy==1.23.5 cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich_click click doit pydevtool hypothesis
+
+      - name: cache install
+        id: cache-install
+        uses: actions/cache@v3
+        with:
+          path: |
+              C:\Program Files (x86)\Intel\oneAPI\compiler
+          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+      - name: Install oneAPI Base kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_BASEKIT_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+      - name: Install oneAPI HPC kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_HPC_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
+
+      # The following steps are necessary because calling `.bat` files for Intel oneAPI and
+      # MSVC doesn't update the environment on CI. Both `ifx` and `cl` aren't detected resulting
+      # in failure of build setup for SciPy. After trying all the approaches (
+      # like calling `.bat` file from another `.bat` file, removing conda, adding conda),
+      # the only option left was to manually set the PATH, INCLUDE, and LIB.
+      # The OS is set to windows-2022 and therefore MSVC should also be fixed to the version
+      # being used in this check.
+      - name: Set PATH for Intel oneAPI
+        run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set PATH for MSVC
+        run: echo "PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\bin\Roslyn;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Team Tools\DiagnosticsHub\Collector;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\ProgramData\chocolatey\bin;C:\Program Files\Git\cmd;C:\Users\czgdp18073\AppData\Local\Microsoft\WindowsApps;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set LIB for Intel oneAPI
+        run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set LIB for MSVC
+        run: echo "LIB=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\ATLMFC\lib\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\lib\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Program Files (x86)\Windows Kits\10\\lib\10.0.22621.0\\um\x64;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set INCLUDE for MSVC
+        run: echo "INCLUDE=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\include;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\ATLMFC\include;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\VS\include;C:\Program Files (x86)\Windows Kits\10\include\10.0.22621.0\ucrt;C:\Program Files (x86)\Windows Kits\10\\include\10.0.22621.0\\um;C:\Program Files (x86)\Windows Kits\10\\include\10.0.22621.0\\shared;C:\Program Files (x86)\Windows Kits\10\\include\10.0.22621.0\\winrt;C:\Program Files (x86)\Windows Kits\10\\include\10.0.22621.0\\cppwinrt;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: set FC
+        run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build
+        run: python dev.py build -C-Duse-pythran=false -C--vsenv
+        shell: cmd
+
+      - name: Test scipy.datasets
+        run: python dev.py test -s datasets
+        shell: cmd
+
+      - name: Test scipy.misc
+        run: python dev.py test -s misc
+        shell: cmd
