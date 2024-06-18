@@ -14,6 +14,7 @@ permissions:
 
 env:
   WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
+  WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -64,12 +65,17 @@ jobs:
         with:
           path: |
               C:\Program Files (x86)\Intel\oneAPI\compiler
-          key: install-${{ env.WINDOWS_BASEKIT_URL }}-compiler
+          key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
       - name: Install oneAPI Base kit
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
           echo %WINDOWS_BASEKIT_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_BASEKIT_URL%
+      - name: Install oneAPI HPC kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          echo %WINDOWS_HPC_URL%
+          tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
 
       # The following steps are necessary because calling `.bat` files for Intel oneAPI and
       # MSVC doesn't update the environment on CI. Both `ifx` and `cl` aren't detected resulting
