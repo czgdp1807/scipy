@@ -107,5 +107,5 @@ jobs:
         shell: cmd
 
       - name: Test
-        run: python dev.py python
+        run: python dev.py test -s fft
         shell: cmd
