@@ -15,10 +15,6 @@ permissions:
 env:
   WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
   WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
-  # SAMPLES_TAG: 2024.1.0
-  # COMPILER_VERSION: 2024.1.0
-  # TBB_VERSION: 2021.12.0
-  # VS_VER: vs2022
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -46,9 +42,6 @@ jobs:
         uses: actions/checkout@v4.1.1
         with:
           submodules: recursive
-
-      # - name: Reset PATH
-      #   run: echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Setup conda
         uses: s-weigand/setup-conda@v1
@@ -84,13 +77,20 @@ jobs:
           echo %WINDOWS_HPC_URL%
           tools/install_intel_oneAPI_windows.bat %WINDOWS_HPC_URL%
 
-      - name: Set PATH
+      # The following steps are necessary because calling `.bat` files for Intel oneAPI and
+      # MSVC doesn't update the environment on CI. Both `ifx` and `cl` aren't detected resulting
+      # in failure of build setup for SciPy. After trying all the approaches (
+      # like calling `.bat` file from another `.bat` file, removing conda, adding conda),
+      # the only option left was to manually set the PATH, INCLUDE, and LIB.
+      # The OS is set to windows-2022 and therefore MSVC should also be fixed to the version
+      # being used in this check.
+      - name: Set PATH for Intel oneAPI
         run: echo "PATH=C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Set PATH for MSVC
         run: echo "PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX64\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\VCPackages;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\bin\Roslyn;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Team Tools\DiagnosticsHub\Collector;C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\\x64;C:\Program Files (x86)\Windows Kits\10\bin\\x64;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\\MSBuild\Current\Bin\amd64;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\;C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit;C:\ProgramData\chocolatey\bin;C:\Program Files\Git\cmd;C:\Users\czgdp18073\AppData\Local\Microsoft\WindowsApps;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Set LIB
+      - name: Set LIB for Intel oneAPI
         run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Set LIB for MSVC
@@ -101,10 +101,6 @@ jobs:
 
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Run cl
-        run: cl
-        shell: cmd
 
       - name: Build
         run: python dev.py build -C-Duse-pythran=false -C--vsenv
