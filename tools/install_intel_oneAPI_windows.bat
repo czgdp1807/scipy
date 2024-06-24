@@ -8,6 +8,7 @@ set URL=%1
 set COMPONENTS=%2
 
 
+:: download installer from intel
 curl.exe --output %TEMP%\webimage.exe --url %URL% --retry 5 --retry-delay 5
 start /b /wait %TEMP%\webimage.exe -s -x -f webimage_extracted
 del %TEMP%\webimage.exe
