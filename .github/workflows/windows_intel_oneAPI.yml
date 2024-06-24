@@ -12,6 +12,9 @@ on:
 permissions:
    contents: read  # to fetch code (actions/checkout)
 
+# The environment variable WINDOWS_BASEKIT_URL and WINDOWS_HPC_URL
+# store the URL for downloading Intel oneAPI.
+# Reference - https://github.com/oneapi-src/oneapi-ci/blob/b4a96bd1888c130fcb73524d2b77b90f43681cbc/.github/workflows/build_all.yml#L11-L12
 env:
   WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7dff44ba-e3af-4448-841c-0d616c8da6e7/w_BaseKit_p_2024.1.0.595_offline.exe
   WINDOWS_HPC_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/c95a3b26-fc45-496c-833b-df08b10297b9/w_HPCKit_p_2024.1.0.561_offline.exe
@@ -102,6 +105,9 @@ jobs:
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # MSVC throws error with Pythran in SciPy.
+      # So we use -C-Duse-pythran=false to skip Pythran dependency.
+      # Reference - https://github.com/serge-sans-paille/pythran/issues/2215
       - name: Build
         run: python dev.py build -C-Duse-pythran=false -C--vsenv
         shell: cmd
