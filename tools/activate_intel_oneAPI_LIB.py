@@ -7,7 +7,9 @@ vc_version = version_dir[-1]
 
 LIB = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;"
        fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\ATLMFC\lib\x64;"
-       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\lib\x64;$env:LIB")
+       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\lib\x64;"
+       r"C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;"
+       r"C:\Program Files (x86)\Windows Kits\10\\lib\10.0.22621.0\\um\x64;$env:LIB")
 
 env_file = os.getenv('GITHUB_ENV')
 
