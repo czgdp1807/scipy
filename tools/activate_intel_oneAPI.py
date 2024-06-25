@@ -36,6 +36,4 @@ INCLUDE = (fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\
 env_file = os.getenv('GITHUB_ENV')
 
 with open(env_file, "a") as myfile:
-    myfile.write(fr"PATH={PATH}")
-    myfile.write(fr"LIB={LIB}")
-    myfile.write(fr"INCLUDE={INCLUDE}")
+    myfile.write(fr"PATH={PATH}\nLIB={LIB}\nINCLUDE={INCLUDE}\n")
