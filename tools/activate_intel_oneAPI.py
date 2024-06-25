@@ -25,4 +25,4 @@ PATH = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;"
 env_file = os.getenv('GITHUB_ENV')
 
 with open(env_file, "a") as myfile:
-    myfile.write("PATH={PATH}")
+    myfile.write(fr"PATH={PATH}")
