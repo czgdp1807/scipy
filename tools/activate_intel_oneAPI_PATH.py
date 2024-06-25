@@ -2,7 +2,6 @@ import os
 
 msvc_path = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\MSVC\\"
 version_dir = os.listdir(msvc_path)
-
 vc_version = version_dir[-1]
 
 PATH = (fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\bin\HostX64\x64;"
