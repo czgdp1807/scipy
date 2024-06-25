@@ -1,6 +1,9 @@
 import os
 
-vc_version = "14.40.33807"
+msvc_path = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\MSVC\\"
+version_dir = os.listdir(msvc_path)
+
+vc_version = version_dir[0]
 
 PATH = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;"
         fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\bin\HostX64\x64;"
@@ -22,7 +25,17 @@ PATH = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg;$env:PATH")
 
+LIB = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;"
+       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\ATLMFC\lib\x64;"
+       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\lib\x64;$env:LIB")
+
+INCLUDE = (fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\include;"
+           fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\ATLMFC\include;"
+           r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\VS\include;$env:INCLUDE")
+
 env_file = os.getenv('GITHUB_ENV')
 
 with open(env_file, "a") as myfile:
     myfile.write(fr"PATH={PATH}")
+    myfile.write(fr"LIB = {LIB}")
+    myfile.write(fr"INCLUDE = {INCLUDE}")
