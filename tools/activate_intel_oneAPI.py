@@ -22,4 +22,7 @@ PATH = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg;$env:PATH")
 
-os.environ["MSVC_Intel_oneAPI_PATH"] = PATH
+env_file = os.getenv('GITHUB_ENV')
+
+with open(env_file, "a") as myfile:
+    myfile.write("PATH={PATH}")
