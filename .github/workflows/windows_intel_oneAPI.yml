@@ -87,8 +87,14 @@ jobs:
       # the only option left was to manually set the PATH, INCLUDE, and LIB.
       # The OS is set to windows-2022 and therefore MSVC should also be fixed to the version
       # being used in this check.
-      - name: Activate Intel oneAPI
-        run: python tools\activate_intel_oneAPI.py
+      - name: Set PATH
+        run: python tools\activate_intel_oneAPI_PATH.py
+      
+      - name: Set LIB
+        run: python tools\activate_intel_oneAPI_LIB.py
+
+      - name: Set INCLUDE
+        run: python tools\activate_intel_oneAPI_INCLUDE.py
 
       - name: set FC
         run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append

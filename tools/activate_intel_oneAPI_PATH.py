@@ -25,21 +25,7 @@ PATH = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\bin\ConnectionManagerExe;"
         r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\vcpkg;$env:PATH")
 
-LIB = (r"C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;"
-       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\ATLMFC\lib\x64;"
-       fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\lib\x64;$env:LIB")
-
-INCLUDE = (fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\include;"
-           fr"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\{vc_version}\ATLMFC\include;"
-           r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\VS\include;$env:INCLUDE")
-
 env_file = os.getenv('GITHUB_ENV')
 
 with open(env_file, "a") as myfile1:
     myfile1.write(fr"PATH={PATH}")
-
-with open(env_file, "a") as myfile2:
-    myfile2.write(fr"LIB={LIB}")
-
-with open(env_file, "a") as myfile3:
-    myfile3.write(fr"INCLUDE={INCLUDE}")
