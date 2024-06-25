@@ -88,7 +88,7 @@ jobs:
       # The OS is set to windows-2022 and therefore MSVC should also be fixed to the version
       # being used in this check.
       - name: Activate Intel oneAPI
-        run: python tools\activate_intel_oneAPI.py
+        run: python tools\activate_intel_oneAPI.py | Out-File -FilePath $env:pythonOutput -Append
       
       - name: Set PATH
         run: echo "PATH=$env:pythonOutput" | Out-File -FilePath $env:GITHUB_ENV -Append
