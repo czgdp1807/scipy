@@ -91,7 +91,7 @@ jobs:
         run: python tools\activate_intel_oneAPI.py
       
       - name: Set PATH
-        run: echo "PATH=$env:Intel_oneAPI_PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: echo "PATH=$env:pythonOutput" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Set LIB for Intel oneAPI
         run: echo "LIB=C:\Program Files (x86)\Intel\oneAPI\compiler\2024.1\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append
