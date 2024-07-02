@@ -90,20 +90,10 @@ jobs:
           python dev.py build -C-Duse-pythran=false -C--vsenv
         shell: cmd
 
-      # - name: set FC
-      #   run: echo "FC=ifx" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Test scipy.datasets
+        run: python dev.py test -s datasets
+        shell: cmd
 
-      # # MSVC throws error with Pythran in SciPy.
-      # # So we use -C-Duse-pythran=false to skip Pythran dependency.
-      # # Reference - https://github.com/serge-sans-paille/pythran/issues/2215
-      # - name: Build
-      #   run: python dev.py build -C-Duse-pythran=false -C--vsenv
-      #   shell: cmd
-
-      # - name: Test scipy.datasets
-      #   run: python dev.py test -s datasets
-      #   shell: cmd
-
-      # - name: Test scipy.misc
-      #   run: python dev.py test -s misc
-      #   shell: cmd
+      - name: Test scipy.misc
+        run: python dev.py test -s misc
+        shell: cmd
