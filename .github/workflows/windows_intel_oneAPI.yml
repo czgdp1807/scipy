@@ -69,6 +69,7 @@ jobs:
           path: |
               C:\Program Files (x86)\Intel\oneAPI\compiler
               C:\Program Files (x86)\Intel\oneAPI\setvars.bat
+              C:\Program Files (x86)\Intel\oneAPI\setvars-vcvarsall.bat
           key: install-${{ env.WINDOWS_HPC_URL }}-${{ env.WINDOWS_BASEKIT_URL }}-compiler
       - name: Install oneAPI Base kit
         if: steps.cache-install.outputs.cache-hit != 'true'
@@ -84,7 +85,8 @@ jobs:
       - name: Initialise Intel oneAPI
         run: |
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-          call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          set FC=ifx
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           python dev.py build -C-Duse-pythran=false -C--vsenv
         shell: cmd
 
