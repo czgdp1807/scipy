@@ -91,8 +91,8 @@ jobs:
       - name: Install oneAPI HPC kit
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
-          printenv $LINUX_HPCKIT_URL
-          bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
+          printenv LINUX_HPCKIT_URL
+          bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL $LINUX_FORTRAN_COMPONENTS
 
     #   - name: Initialise Intel oneAPI and Build SciPy
     #     run: |
