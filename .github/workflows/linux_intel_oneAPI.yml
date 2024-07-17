@@ -37,9 +37,6 @@ jobs:
       needs.get_commit_message.outputs.message == 1
       && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.1
@@ -89,12 +86,12 @@ jobs:
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
           printenv LINUX_BASEKIT_URL
-          tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL
+          bash tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL
       - name: Install oneAPI HPC kit
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
           printenv $LINUX_HPCKIT_URL
-          tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
+          bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
     #   - name: Initialise Intel oneAPI and Build SciPy
     #     run: |
