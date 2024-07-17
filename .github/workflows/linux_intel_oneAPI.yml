@@ -106,5 +106,6 @@ jobs:
       - name: Test scipy
         shell: bash -l {0}
         run: |
+          . /opt/intel/oneapi/setvars.sh --force
           conda activate scipy-dev
           python dev.py test
