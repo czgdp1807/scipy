@@ -74,24 +74,24 @@ jobs:
         run: mamba env update -n scipy-dev -f environment.yml
         if: steps.envcache.outputs.cache-hit != 'true'
 
-      # - name: cache install
-      #   id: cache-install
-      #   uses: actions/cache@v3
-      #   with:
-      #     path: |
-      #         /opt/intel/oneapi/compiler
-      #         /opt/intel/oneapi/setvars.sh
-      #     key: install-${{ env.LINUX_BASEKIT_URL }}-${{ env.LINUX_HPCKIT_URL }}-compiler
-      # - name: Install oneAPI Base kit
-      #   if: steps.cache-install.outputs.cache-hit != 'true'
-      #   run: |
-      #     printenv LINUX_BASEKIT_URL
-      #     bash tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL
-      # - name: Install oneAPI HPC kit
-      #   if: steps.cache-install.outputs.cache-hit != 'true'
-      #   run: |
-      #     printenv LINUX_HPCKIT_URL
-      #     bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
+      - name: cache install
+        id: cache-install
+        uses: actions/cache@v3
+        with:
+          path: |
+              /opt/intel/oneapi/compiler
+              /opt/intel/oneapi/setvars.sh
+          key: install-${{ env.LINUX_BASEKIT_URL }}-${{ env.LINUX_HPCKIT_URL }}-compiler
+      - name: Install oneAPI Base kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          printenv LINUX_BASEKIT_URL
+          bash tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL
+      - name: Install oneAPI HPC kit
+        if: steps.cache-install.outputs.cache-hit != 'true'
+        run: |
+          printenv LINUX_HPCKIT_URL
+          bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
     #   - name: Initialise Intel oneAPI and Build SciPy
     #     run: |
