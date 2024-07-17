@@ -37,6 +37,10 @@ jobs:
       needs.get_commit_message.outputs.message == 1
       && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.1
@@ -100,4 +104,7 @@ jobs:
           FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
       - name: Test scipy
-        run: python dev.py test
+        shell: bash -l {0}
+        run: |
+          conda activate scipy-dev
+          python dev.py test
