@@ -93,6 +93,7 @@ jobs:
           bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
       - name: Initialise Intel oneAPI and Build SciPy
+        shell: bash -l {0}
         run: |
           . /opt/intel/oneapi/setvars.sh --force
           conda activate scipy-dev
