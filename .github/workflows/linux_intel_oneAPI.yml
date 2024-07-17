@@ -93,10 +93,10 @@ jobs:
           printenv LINUX_HPCKIT_URL
           bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
-    #   - name: Initialise Intel oneAPI and Build SciPy
-    #     run: |
-    #       . /opt/intel/oneapi/setvars.sh --force
-    #       FC=ifx python dev.py build
+      - name: Initialise Intel oneAPI and Build SciPy
+        run: |
+          . /opt/intel/oneapi/setvars.sh --force
+          FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
-    #   - name: Test scipy
-    #     run: python dev.py test
+      - name: Test scipy
+        run: python dev.py test
