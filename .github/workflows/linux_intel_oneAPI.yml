@@ -18,6 +18,7 @@ permissions:
 env:
   LINUX_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/fdc7a2bc-b7a8-47eb-8876-de6201297144/l_BaseKit_p_2024.1.0.596_offline.sh
   LINUX_HPCKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7f096850-dc7b-4c35-90b5-36c12abd9eaa/l_HPCKit_p_2024.1.0.560_offline.sh
+  LINUX_FORTRAN_COMPONENTS: intel-oneapi-compiler-fortran
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -81,12 +82,12 @@ jobs:
           path: |
               /opt/intel/oneapi/compiler
               /opt/intel/oneapi/setvars.sh
-          key: install-${{ env.LINUX_BASEKIT_URL }}-${{ env.LINUX_HPCKIT_URL }}-compiler
-      - name: Install oneAPI Base kit
-        if: steps.cache-install.outputs.cache-hit != 'true'
-        run: |
-          printenv LINUX_BASEKIT_URL
-          bash tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL
+          key: install-${{ env.LINUX_BASEKIT_URL }}-${{ env.LINUX_HPCKIT_URL }}-{{ env.LINUX_FORTRAN_COMPONENTS }}-compiler
+      # - name: Install oneAPI Base kit
+      #   if: steps.cache-install.outputs.cache-hit != 'true'
+      #   run: |
+      #     printenv LINUX_BASEKIT_URL
+      #     bash tools/install_intel_oneAPI_linux.sh $LINUX_BASEKIT_URL $LINUX_FORTRAN_COMPONENTS
       - name: Install oneAPI HPC kit
         if: steps.cache-install.outputs.cache-hit != 'true'
         run: |
