@@ -62,6 +62,7 @@ jobs:
       - name: Update Conda Environment
         run: |
           mamba env update -n scipy-dev -f environment.yml
+          conda activate scipy-dev
           conda remove -y compilers
 
       - name: cache install
