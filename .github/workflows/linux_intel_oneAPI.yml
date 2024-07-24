@@ -1,4 +1,4 @@
-name: Intel Fortran tests
+name: Intel oneAPI tests
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
     name: Get commit message
     uses: ./.github/workflows/commit_message.yml
 
-  msvc_ifx_blas:
+  icx_icpx_ifx_mkl:
     name: py3.12, dev.py
     needs: get_commit_message
     # Ensure (a) this doesn't run on forks by default, and
@@ -77,14 +77,14 @@ jobs:
           printenv LINUX_HPCKIT_URL
           bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
-      # - name: Initialise Intel oneAPI and Build SciPy
-      #   shell: bash -l {0}
-      #   run: |
-      #     . /opt/intel/oneapi/setvars.sh --force
-      #     CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
+      - name: Initialise Intel oneAPI and Build SciPy
+        shell: bash -l {0}
+        run: |
+          . /opt/intel/oneapi/setvars.sh --force
+          CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
-      # - name: Test scipy
-      #   shell: bash -l {0}
-      #   run: |
-      #     . /opt/intel/oneapi/setvars.sh --force
-      #     python dev.py test
+      - name: Test scipy
+        shell: bash -l {0}
+        run: |
+          . /opt/intel/oneapi/setvars.sh --force
+          python dev.py test
