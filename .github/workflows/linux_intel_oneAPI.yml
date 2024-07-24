@@ -60,7 +60,7 @@ jobs:
           conda install -c conda-forge python cython>=3.0.8 meson meson-python ninja numpy openblas pkg-config libblas=*=*openblas pybind11 pooch pythran pytest pytest-cov
           conda install -c conda-forge pytest-xdist pytest-timeout asv >=0.6 hypothesis array-api-strict mypy typing_extensions types-psutil sphinx intersphinx-registry numpydoc ipython setuptools<67.3
           conda install -c conda-forge matplotlib pydata-sphinx-theme>=0.15.2 sphinx-copybutton sphinx-design jupytext myst-nb jupyterlite-sphinx>=0.13.1 jupyterlite-pyodide-kernel mpmath gmpy2
-          conda install -c conda-forge  threadpoolctl rich-click click doit>=0.36.0 pydevtool ruff>=0.0.292 cython-lint
+          conda install -c conda-forge threadpoolctl rich-click click doit>=0.36.0 pydevtool ruff>=0.0.292 cython-lint
 
       - name: cache install
         id: cache-install
