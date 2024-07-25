@@ -24,6 +24,11 @@ using WeightedDistanceFunc = FunctionRef<
     void(StridedView2D<T>, StridedView2D<const T>,
          StridedView2D<const T>, StridedView2D<const T>)>;
 
+template <typename T>
+using CosineDistanceFunc = FunctionRef<
+    void(StridedView2D<T>, StridedView2D<const T>, StridedView2D<const T>,
+         const T, const T*)>;
+
 // Validate weights are >= 0
 template <typename T>
 void validate_weights(const ArrayDescriptor& w, const T* w_data) {
@@ -167,6 +172,41 @@ void cdist_impl(ArrayDescriptor out, T* out_data,
 
     for (intptr_t i = 0; i < num_rowsX; ++i) {
         f(out_view, x_view, y_view);
+
+        out_view.data += out.strides[0];
+        x_view.data += x.strides[0];
+    }
+}
+
+template <typename T>
+void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
+                ArrayDescriptor x, const T* x_data,
+                ArrayDescriptor y, const T* y_data,
+                const T* x_rownorm_data, const T* y_rownorm_data,
+                CosineDistanceFunc<T> f) {
+
+    const auto num_rowsX = x.shape[0];
+    const auto num_rowsY = y.shape[0];
+    const auto num_cols = x.shape[1];
+
+    StridedView2D<T> out_view;
+    out_view.strides = {out.strides[1], 0};
+    out_view.shape = {num_rowsY, num_cols};
+    out_view.data = out_data;
+
+    StridedView2D<const T> x_view;
+    x_view.strides = {0, x.strides[1]};
+    x_view.shape = {num_rowsY, num_cols};
+    x_view.data = x_data;
+
+    StridedView2D<const T> y_view;
+    y_view.strides = {y.strides[0], y.strides[1]};
+    y_view.shape = {out_view.shape[0], num_cols};
+    y_view.data = y_data;
+
+    for (intptr_t i = 0; i < num_rowsX; ++i) {
+        f(out_view, x_view, y_view,
+          x_rownorm_data[i], y_rownorm_data);
 
         out_view.data += out.strides[0];
         x_view.data += x.strides[0];
@@ -325,6 +365,36 @@ py::array cdist_unweighted(const py::array& out_obj, const py::array& x_obj,
     {
         py::gil_scoped_release guard;
         cdist_impl(out_desc, out_data, x_desc, x_data, y_desc, y_data, f);
+    }
+    return std::move(out);
+}
+
+template <typename scalar_t>
+py::array cdist_cosine_(const py::array& out_obj, const py::array& x_obj,
+                        const py::array& y_obj, const py::array& x_rownorm_obj,
+                        const py::array& y_rownorm_obj, CosineDistanceFunc<scalar_t> f) {
+    auto x = npy_asarray<scalar_t>(x_obj,
+                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
+    auto y = npy_asarray<scalar_t>(y_obj,
+                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
+    auto x_rownorm = npy_asarray<scalar_t>(x_rownorm_obj,
+                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
+    auto y_rownorm = npy_asarray<scalar_t>(y_rownorm_obj,
+                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
+    auto out = py::cast<py::array_t<scalar_t>>(out_obj);
+
+    auto out_desc = get_descriptor(out);
+    auto out_data = out.mutable_data();
+    auto x_desc = get_descriptor(x);
+    auto x_data = x.data();
+    auto y_desc = get_descriptor(y);
+    auto y_data = y.data();
+    auto x_rownorm_data = x_rownorm.data();
+    auto y_rownorm_data = y_rownorm.data();
+    {
+        py::gil_scoped_release guard;
+        cdist_cosine_impl(out_desc, out_data, x_desc, x_data, y_desc, y_data,
+                          x_rownorm_data, y_rownorm_data, f);
     }
     return std::move(out);
 }
@@ -547,6 +617,36 @@ py::array cdist(const py::object& out_obj, const py::object& x_obj,
     return out;
 }
 
+template <typename Func>
+py::array cdist_cosine(const py::object& out_obj, const py::object& x_obj,
+                       const py::object& y_obj, const py::object& x_rownorm_obj,
+                       const py::object& y_rownorm_obj, Func&& f) {
+    auto x = npy_asarray(x_obj);
+    auto y = npy_asarray(y_obj);
+    auto x_rownorm = npy_asarray(x_rownorm_obj);
+    auto y_rownorm = npy_asarray(y_rownorm_obj);
+    if (x.ndim() != 2) {
+        throw std::invalid_argument("XA must be a 2-dimensional array.");
+    }
+    if (y.ndim() != 2) {
+        throw std::invalid_argument("XB must be a 2-dimensional array.");
+    }
+    const intptr_t m = x.shape(1);
+    if (m != y.shape(1)) {
+        throw std::invalid_argument(
+            "XA and XB must have the same number of columns "
+            "(i.e. feature dimension).");
+    }
+
+    std::array<intptr_t, 2> out_shape{{x.shape(0), y.shape(0)}};
+    auto dtype = promote_type_real(common_type(x.dtype(), y.dtype()));
+    auto out = prepare_out_argument(out_obj, dtype, out_shape);
+    DISPATCH_DTYPE(dtype, [&]{
+        cdist_cosine_<scalar_t>(out, x, y, x_rownorm, y_rownorm, f);
+    });
+    return out;
+}
+
 PYBIND11_MODULE(_distance_pybind, m) {
     if (_import_array() != 0) {
         throw py::error_already_set();
@@ -705,6 +805,11 @@ PYBIND11_MODULE(_distance_pybind, m) {
               return cdist(out, x, y, w, EuclideanDistance{});
           },
           "x"_a, "y"_a, "w"_a=py::none(), "out"_a=py::none());
+    m.def("cdist_cosine",
+          [](py::object x, py::object y, py::object x_rownorm, py::object y_rownorm, py::object out) {
+              return cdist_cosine(out, x, y, x_rownorm, y_rownorm, CosineDistance{});
+          },
+          "x"_a, "y"_a, "x_rownorm"_a, "y_rownorm"_a, "out"_a=py::none());
     m.def("cdist_minkowski",
           [](py::object x, py::object y, py::object w, py::object out,
              double p) {
