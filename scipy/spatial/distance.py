@@ -1628,6 +1628,28 @@ _convert_to_bool = partial(_convert_to_type, out_type=bool)
 _distance_wrap.pdist_correlation_double_wrap = _correlation_pdist_wrap
 _distance_wrap.cdist_correlation_double_wrap = _correlation_cdist_wrap
 
+def _distance_pybind_cdist_cosine(XA, XB, *, out=None, **kwargs):
+    # TODO: Remove the following code for weights
+    w = kwargs.pop('w', None)
+    if w is not None:
+        metric_info = _METRICS['cosine']
+        XA = np.ascontiguousarray(XA)
+        XB = np.ascontiguousarray(XB)
+        mA, n = XA.shape
+        mB, _ = XB.shape
+        XA, XB, typ, kwargs = _validate_cdist_input(
+            XA, XB, mA, mB, n, metric_info, **kwargs)
+        metric = metric_info.dist_func
+        return _cdist_callable(
+            XA, XB, metric=metric, out=out, w=w, **kwargs)
+
+    XA = XA.astype(np.float64)
+    XB = XB.astype(np.float64)
+    x_rownorm_a = np.linalg.norm(XA, axis=1)
+    y_rownorm_a = np.linalg.norm(XB, axis=1)
+    return _distance_pybind.cdist_cosine(XA, XB, x_rownorm_a, y_rownorm_a,
+                                         out, **kwargs)
+
 
 @dataclasses.dataclass(frozen=True)
 class CDistMetricWrapper:
@@ -1745,7 +1767,7 @@ _METRIC_INFOS = [
         canonical_name='cosine',
         aka={'cosine', 'cos'},
         dist_func=cosine,
-        cdist_func=CDistMetricWrapper('cosine'),
+        cdist_func=_distance_pybind_cdist_cosine,
         pdist_func=PDistMetricWrapper('cosine'),
     ),
     MetricInfo(
@@ -2574,7 +2596,7 @@ def num_obs_dm(d):
     --------
     Find the number of original observations corresponding
     to a square redundant distance matrix d.
-    
+
     >>> from scipy.spatial.distance import num_obs_dm
     >>> d = [[0, 100, 200], [100, 0, 150], [200, 150, 0]]
     >>> num_obs_dm(d)
@@ -2604,7 +2626,7 @@ def num_obs_y(Y):
     --------
     Find the number of original observations corresponding to a
     condensed distance matrix Y.
-    
+
     >>> from scipy.spatial.distance import num_obs_y
     >>> Y = [1, 2, 3.5, 7, 10, 4]
     >>> num_obs_y(Y)
