@@ -188,12 +188,32 @@ template <typename T>
 void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
                 ArrayDescriptor x, const T* x_data,
                 ArrayDescriptor y, const T* y_data,
-                const T* x_rownorm_data, const T* y_rownorm_data,
                 CosineDistanceFunc<T> f) {
 
     const auto num_rowsX = x.shape[0];
     const auto num_rowsY = y.shape[0];
     const auto num_cols = x.shape[1];
+
+    T* norm_data = new T[num_rowsX + num_rowsY];
+    T* x_rownorm_data = norm_data;
+    T* y_rownorm_data = norm_data + num_rowsX;
+    for( intptr_t i = 0; i < num_rowsX; i++ ) {
+        T x_rownorm = 0;
+        for( intptr_t j = 0; j < num_cols; j++ ) {
+            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
+            x_rownorm += x_ij * x_ij;
+        }
+        x_rownorm_data[i] = std::sqrt(x_rownorm);
+    }
+
+    for( intptr_t i = 0; i < num_rowsY; i++ ) {
+        T y_rownorm = 0;
+        for( intptr_t j = 0; j < num_cols; j++ ) {
+            T y_ij = y_data[i * y.strides[0] + j * y.strides[1]];
+            y_rownorm += y_ij * y_ij;
+        }
+        y_rownorm_data[i] = std::sqrt(y_rownorm);
+    }
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
@@ -217,19 +237,41 @@ void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
         out_view.data += out.strides[0];
         x_view.data += x.strides[0];
     }
+
+    delete [] norm_data;
 }
 
 template <typename T>
 void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
                 ArrayDescriptor x, const T* x_data,
                 ArrayDescriptor y, const T* y_data,
-                const T* x_rownorm_data, const T* y_rownorm_data,
                 ArrayDescriptor w, const T* w_data,
                 WeightedCosineDistanceFunc<T> f) {
 
     const auto num_rowsX = x.shape[0];
     const auto num_rowsY = y.shape[0];
     const auto num_cols = x.shape[1];
+
+    T* norm_data = new T[num_rowsX + num_rowsY];
+    T* x_rownorm_data = norm_data;
+    T* y_rownorm_data = norm_data + num_rowsX;
+    for( intptr_t i = 0; i < num_rowsX; i++ ) {
+        T x_rownorm = 0;
+        for( intptr_t j = 0; j < num_cols; j++ ) {
+            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
+            x_rownorm += w_data[j] * x_ij * x_ij;
+        }
+        x_rownorm_data[i] = std::sqrt(x_rownorm);
+    }
+
+    for( intptr_t i = 0; i < num_rowsY; i++ ) {
+        T y_rownorm = 0;
+        for( intptr_t j = 0; j < num_cols; j++ ) {
+            T y_ij = y_data[i * y.strides[0] + j * y.strides[1]];
+            y_rownorm += w_data[j] * y_ij * y_ij;
+        }
+        y_rownorm_data[i] = std::sqrt(y_rownorm);
+    }
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
@@ -258,6 +300,8 @@ void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
         out_view.data += out.strides[0];
         x_view.data += x.strides[0];
     }
+
+    delete [] norm_data;
 }
 
 template <typename T>
@@ -418,15 +462,10 @@ py::array cdist_unweighted(const py::array& out_obj, const py::array& x_obj,
 
 template <typename scalar_t>
 py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_obj,
-                        const py::array& y_obj, const py::array& x_rownorm_obj,
-                        const py::array& y_rownorm_obj, CosineDistanceFunc<scalar_t> f) {
+                        const py::array& y_obj, CosineDistanceFunc<scalar_t> f) {
     auto x = npy_asarray<scalar_t>(x_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto y = npy_asarray<scalar_t>(y_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto x_rownorm = npy_asarray<scalar_t>(x_rownorm_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto y_rownorm = npy_asarray<scalar_t>(y_rownorm_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto out = py::cast<py::array_t<scalar_t>>(out_obj);
 
@@ -436,12 +475,10 @@ py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_o
     auto x_data = x.data();
     auto y_desc = get_descriptor(y);
     auto y_data = y.data();
-    auto x_rownorm_data = x_rownorm.data();
-    auto y_rownorm_data = y_rownorm.data();
     {
         py::gil_scoped_release guard;
-        cdist_cosine_impl(out_desc, out_data, x_desc, x_data, y_desc, y_data,
-                          x_rownorm_data, y_rownorm_data, f);
+        cdist_cosine_impl(out_desc, out_data, x_desc,
+                          x_data, y_desc, y_data, f);
     }
     return std::move(out);
 }
@@ -449,18 +486,13 @@ py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_o
 template <typename scalar_t>
 py::array cdist_cosine_weighted(
         const py::array& out_obj, const py::array& x_obj,
-        const py::array& y_obj, const py::array& x_rownorm_obj,
-        const py::array& y_rownorm_obj, const py::array& w_obj,
+        const py::array& y_obj, const py::array& w_obj,
         WeightedCosineDistanceFunc<scalar_t> f) {
     auto x = npy_asarray<scalar_t>(x_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto y = npy_asarray<scalar_t>(y_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto w = npy_asarray<scalar_t>(w_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto x_rownorm = npy_asarray<scalar_t>(x_rownorm_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto y_rownorm = npy_asarray<scalar_t>(y_rownorm_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto out = py::cast<py::array_t<scalar_t>>(out_obj);
 
@@ -472,14 +504,12 @@ py::array cdist_cosine_weighted(
     auto y_data = y.data();
     auto w_desc = get_descriptor(w);
     auto w_data = w.data();
-    auto x_rownorm_data = x_rownorm.data();
-    auto y_rownorm_data = y_rownorm.data();
     {
         py::gil_scoped_release guard;
         validate_weights(w_desc, w_data);
         cdist_cosine_weighted_impl(
-            out_desc, out_data, x_desc, x_data, y_desc, y_data,
-            x_rownorm_data, y_rownorm_data, w_desc, w_data, f);
+            out_desc, out_data, x_desc, x_data,
+            y_desc, y_data, w_desc, w_data, f);
     }
     return std::move(out);
 }
@@ -704,12 +734,9 @@ py::array cdist(const py::object& out_obj, const py::object& x_obj,
 
 template <typename Func>
 py::array cdist_cosine(const py::object& out_obj, const py::object& x_obj,
-                       const py::object& y_obj, const py::object& x_rownorm_obj,
-                       const py::object& y_rownorm_obj, const py::object& w_obj, Func&& f) {
+                       const py::object& y_obj, const py::object& w_obj, Func&& f) {
     auto x = npy_asarray(x_obj);
     auto y = npy_asarray(y_obj);
-    auto x_rownorm = npy_asarray(x_rownorm_obj);
-    auto y_rownorm = npy_asarray(y_rownorm_obj);
     if (x.ndim() != 2) {
         throw std::invalid_argument("XA must be a 2-dimensional array.");
     }
@@ -728,7 +755,7 @@ py::array cdist_cosine(const py::object& out_obj, const py::object& x_obj,
         auto dtype = promote_type_real(common_type(x.dtype(), y.dtype()));
         auto out = prepare_out_argument(out_obj, dtype, out_shape);
         DISPATCH_DTYPE(dtype, [&]{
-            cdist_cosine_unweighted<scalar_t>(out, x, y, x_rownorm, y_rownorm, f);
+            cdist_cosine_unweighted<scalar_t>(out, x, y, f);
         });
         return out;
     }
@@ -738,7 +765,7 @@ py::array cdist_cosine(const py::object& out_obj, const py::object& x_obj,
         common_type(x.dtype(), y.dtype(), w.dtype()));
     auto out = prepare_out_argument(out_obj, dtype, out_shape);
     DISPATCH_DTYPE(dtype, [&]{
-        cdist_cosine_weighted<scalar_t>(out, x, y, x_rownorm, y_rownorm, w, f);
+        cdist_cosine_weighted<scalar_t>(out, x, y, w, f);
     });
     return out;
 }
@@ -902,11 +929,10 @@ PYBIND11_MODULE(_distance_pybind, m) {
           },
           "x"_a, "y"_a, "w"_a=py::none(), "out"_a=py::none());
     m.def("cdist_cosine",
-          [](py::object x, py::object y, py::object x_rownorm, py::object y_rownorm,
-             py::object w, py::object out) {
-              return cdist_cosine(out, x, y, x_rownorm, y_rownorm, w, CosineDistance{});
+          [](py::object x, py::object y, py::object w, py::object out) {
+              return cdist_cosine(out, x, y, w, CosineDistance{});
           },
-          "x"_a, "y"_a, "x_rownorm"_a, "y_rownorm"_a, "w"_a=py::none(), "out"_a=py::none());
+          "x"_a, "y"_a, "w"_a=py::none(), "out"_a=py::none());
     m.def("cdist_minkowski",
           [](py::object x, py::object y, py::object w, py::object out,
              double p) {

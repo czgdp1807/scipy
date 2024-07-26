@@ -1637,14 +1637,7 @@ def _distance_pybind_cdist_cosine(XA, XB, *, out=None, **kwargs):
 
     XA = XA.astype(np.float64)
     XB = XB.astype(np.float64)
-    if w is not None:
-        x_rownorm_a = np.sqrt(np.sum(np.multiply(XA, XA*w), axis=1))
-        y_rownorm_a = np.sqrt(np.sum(np.multiply(XB, XB*w), axis=1))
-    else:
-        x_rownorm_a = np.linalg.norm(XA, axis=1)
-        y_rownorm_a = np.linalg.norm(XB, axis=1)
-    return _distance_pybind.cdist_cosine(XA, XB, x_rownorm_a, y_rownorm_a,
-                                         w, out, **kwargs)
+    return _distance_pybind.cdist_cosine(XA, XB, w, out, **kwargs)
 
 
 @dataclasses.dataclass(frozen=True)
