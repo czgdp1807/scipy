@@ -1632,23 +1632,19 @@ def _distance_pybind_cdist_cosine(XA, XB, *, out=None, **kwargs):
     # TODO: Remove the following code for weights
     w = kwargs.pop('w', None)
     if w is not None:
-        metric_info = _METRICS['cosine']
-        XA = np.ascontiguousarray(XA)
-        XB = np.ascontiguousarray(XB)
-        mA, n = XA.shape
-        mB, _ = XB.shape
-        XA, XB, typ, kwargs = _validate_cdist_input(
-            XA, XB, mA, mB, n, metric_info, **kwargs)
-        metric = metric_info.dist_func
-        return _cdist_callable(
-            XA, XB, metric=metric, out=out, w=w, **kwargs)
+        w = w.astype(np.float64)
+        w = w / w.sum()
 
     XA = XA.astype(np.float64)
     XB = XB.astype(np.float64)
-    x_rownorm_a = np.linalg.norm(XA, axis=1)
-    y_rownorm_a = np.linalg.norm(XB, axis=1)
+    if w is not None:
+        x_rownorm_a = np.sqrt(np.sum(np.multiply(XA, XA*w), axis=1))
+        y_rownorm_a = np.sqrt(np.sum(np.multiply(XB, XB*w), axis=1))
+    else:
+        x_rownorm_a = np.linalg.norm(XA, axis=1)
+        y_rownorm_a = np.linalg.norm(XB, axis=1)
     return _distance_pybind.cdist_cosine(XA, XB, x_rownorm_a, y_rownorm_a,
-                                         out, **kwargs)
+                                         w, out, **kwargs)
 
 
 @dataclasses.dataclass(frozen=True)
