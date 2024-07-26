@@ -1635,8 +1635,6 @@ def _distance_pybind_cdist_cosine(XA, XB, *, out=None, **kwargs):
         w = w.astype(np.float64)
         w = w / w.sum()
 
-    XA = XA.astype(np.float64)
-    XB = XB.astype(np.float64)
     return _distance_pybind.cdist_cosine(XA, XB, w, out, **kwargs)
 
 

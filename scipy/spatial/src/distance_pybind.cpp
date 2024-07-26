@@ -185,6 +185,32 @@ void cdist_impl(ArrayDescriptor out, T* out_data,
 }
 
 template <typename T>
+ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
+                    const intptr_t num_rowsX, const intptr_t num_cols,
+                    const T* x_data, T* x_rownorm_data) {
+    for( intptr_t i = 0; i < num_rowsX; i++ ) {
+        T x_rownorm[4] = {0, 0, 0, 0};
+        intptr_t j;
+        for( j = 0; j + 3 < num_cols; j += 4 ) {
+            T x_ij0 = x_data[i * x.strides[0] + j * x.strides[1]];
+            T x_ij1 = x_data[i * x.strides[0] + (j + 1) * x.strides[1]];
+            T x_ij2 = x_data[i * x.strides[0] + (j + 2) * x.strides[1]];
+            T x_ij3 = x_data[i * x.strides[0] + (j + 3) * x.strides[1]];
+            x_rownorm[0] += x_ij0 * x_ij0;
+            x_rownorm[1] += x_ij1 * x_ij1;
+            x_rownorm[2] += x_ij2 * x_ij2;
+            x_rownorm[3] += x_ij3 * x_ij3;
+        }
+        for( ; j < num_cols; j++ ) {
+            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
+            x_rownorm[0] += x_ij * x_ij;
+        }
+        x_rownorm_data[i] = std::sqrt(
+            x_rownorm[0] + x_rownorm[1] + x_rownorm[2] + x_rownorm[3]);
+    }
+}
+
+template <typename T>
 void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
                 ArrayDescriptor x, const T* x_data,
                 ArrayDescriptor y, const T* y_data,
@@ -197,23 +223,8 @@ void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
     T* norm_data = new T[num_rowsX + num_rowsY];
     T* x_rownorm_data = norm_data;
     T* y_rownorm_data = norm_data + num_rowsX;
-    for( intptr_t i = 0; i < num_rowsX; i++ ) {
-        T x_rownorm = 0;
-        for( intptr_t j = 0; j < num_cols; j++ ) {
-            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
-            x_rownorm += x_ij * x_ij;
-        }
-        x_rownorm_data[i] = std::sqrt(x_rownorm);
-    }
-
-    for( intptr_t i = 0; i < num_rowsY; i++ ) {
-        T y_rownorm = 0;
-        for( intptr_t j = 0; j < num_cols; j++ ) {
-            T y_ij = y_data[i * y.strides[0] + j * y.strides[1]];
-            y_rownorm += y_ij * y_ij;
-        }
-        y_rownorm_data[i] = std::sqrt(y_rownorm);
-    }
+    _row_norms(x, num_rowsX, num_cols, x_data, x_rownorm_data);
+    _row_norms(y, num_rowsY, num_cols, y_data, y_rownorm_data);
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
@@ -242,6 +253,31 @@ void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
 }
 
 template <typename T>
+ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
+                    const intptr_t num_rowsX, const intptr_t num_cols,
+                    const T* x_data, const ArrayDescriptor& w, const T* w_data,
+                    T* x_rownorm_data) {
+    for( intptr_t i = 0; i < num_rowsX; i++ ) {
+        T x_rownorm[2] = {0, 0};
+        intptr_t j;
+        for( j = 0; j + 1 < num_cols; j += 2 ) {
+            T x_ij0 = x_data[i * x.strides[0] + j * x.strides[1]];
+            T x_ij1 = x_data[i * x.strides[0] + (j + 1) * x.strides[1]];
+            T w_j0 = w_data[j];
+            T w_j1 = w_data[j + 1];
+            x_rownorm[0] += w_j0 * x_ij0 * x_ij0;
+            x_rownorm[1] += w_j1 * x_ij1 * x_ij1;
+        }
+        for( ; j < num_cols; j++ ) {
+            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
+            T w_j = w_data[j];
+            x_rownorm[0] += w_j * x_ij * x_ij;
+        }
+        x_rownorm_data[i] = std::sqrt(x_rownorm[0] + x_rownorm[1]);
+    }
+}
+
+template <typename T>
 void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
                 ArrayDescriptor x, const T* x_data,
                 ArrayDescriptor y, const T* y_data,
@@ -255,23 +291,8 @@ void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
     T* norm_data = new T[num_rowsX + num_rowsY];
     T* x_rownorm_data = norm_data;
     T* y_rownorm_data = norm_data + num_rowsX;
-    for( intptr_t i = 0; i < num_rowsX; i++ ) {
-        T x_rownorm = 0;
-        for( intptr_t j = 0; j < num_cols; j++ ) {
-            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
-            x_rownorm += w_data[j] * x_ij * x_ij;
-        }
-        x_rownorm_data[i] = std::sqrt(x_rownorm);
-    }
-
-    for( intptr_t i = 0; i < num_rowsY; i++ ) {
-        T y_rownorm = 0;
-        for( intptr_t j = 0; j < num_cols; j++ ) {
-            T y_ij = y_data[i * y.strides[0] + j * y.strides[1]];
-            y_rownorm += w_data[j] * y_ij * y_ij;
-        }
-        y_rownorm_data[i] = std::sqrt(y_rownorm);
-    }
+    _row_norms(x, num_rowsX, num_cols, x_data, w, w_data, x_rownorm_data);
+    _row_norms(y, num_rowsY, num_cols, y_data, w, w_data, y_rownorm_data);
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
