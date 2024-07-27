@@ -23,8 +23,8 @@ struct Identity {
 
 struct CosineProject {
     template <typename T>
-    ALWAYS_INLINE T operator() (T val, T x_norm, T y_norm) const {
-        T cosine = val/(x_norm * y_norm);
+    ALWAYS_INLINE T operator() (T val) const {
+        T cosine = val;
         if (std::fabs(cosine) > 1.) {
             /* Clip to correct rounding error. */
             cosine = std::copysign(1, cosine);
@@ -181,153 +181,25 @@ void transform_reduce_2d_(
     }
 }
 
-template <int ilp_factor=4,
-          typename T,
-          typename TransformFunc,
-          typename ProjectFunc = CosineProject,
-          typename ReduceFunc = Plus>
-void cosine_transform_reduce_2d_(
-    StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y,
-    const T x_rownorm_i, const T* y_rownorm_data, const TransformFunc& map) {
-
-    auto project = CosineProject{};
-    auto reduce = Plus{};
-    // Result type of calling map
-    using AccumulateType = typename std::decay<decltype(
-        map(std::declval<T>(), std::declval<T>()))>::type;
-    intptr_t xs = x.strides[1], ys = y.strides[1];
-
-    intptr_t i = 0;
-    if (xs == 1 && ys == 1) {
-        for (; i + (ilp_factor - 1) < x.shape[0]; i += ilp_factor) {
-            const T* x_rows[ilp_factor];
-            const T* y_rows[ilp_factor];
-            ForceUnroll<ilp_factor>{}([&](int k) {
-                x_rows[k] = &x(i + k, 0);
-                y_rows[k] = &y(i + k, 0);
-            });
-
-            AccumulateType dist[ilp_factor] = {};
-            for (intptr_t j = 0; j < x.shape[1]; ++j) {
-                ForceUnroll<ilp_factor>{}([&](int k) {
-                    auto val = map(x_rows[k][j], y_rows[k][j]);
-                    dist[k] = reduce(dist[k], val);
-                });
-            }
-
-            ForceUnroll<ilp_factor>{}([&](int k) {
-                out(i + k, 0) = project(dist[k], x_rownorm_i, y_rownorm_data[i + k]);
-            });
-        }
-    } else {
-        for (; i + (ilp_factor - 1) < x.shape[0]; i += ilp_factor) {
-            const T* x_rows[ilp_factor];
-            const T* y_rows[ilp_factor];
-            ForceUnroll<ilp_factor>{}([&](int k) {
-                x_rows[k] = &x(i + k, 0);
-                y_rows[k] = &y(i + k, 0);
-            });
-
-            AccumulateType dist[ilp_factor] = {};
-            for (intptr_t j = 0; j < x.shape[1]; ++j) {
-                auto x_offset = j * xs;
-                auto y_offset = j * ys;
-                ForceUnroll<ilp_factor>{}([&](int k) {
-                    auto val = map(x_rows[k][x_offset], y_rows[k][y_offset]);
-                    dist[k] = reduce(dist[k], val);
-                });
-            }
-
-            ForceUnroll<ilp_factor>{}([&](int k) {
-                out(i + k, 0) = project(dist[k], x_rownorm_i, y_rownorm_data[i + k]);
-            });
-        }
-    }
-    for (; i < x.shape[0]; ++i) {
-        const T* x_row = &x(i, 0);
-        const T* y_row = &y(i, 0);
-        AccumulateType dist = {};
-        for (intptr_t j = 0; j < x.shape[1]; ++j) {
-            auto val = map(x_row[j * xs], y_row[j * ys]);
-            dist = reduce(dist, val);
-        }
-        out(i, 0) = project(dist, x_rownorm_i, y_rownorm_data[i]);
-    }
-}
-
-template <int ilp_factor=4,
-          typename T,
-          typename TransformFunc,
-          typename ProjectFunc = CosineProject,
-          typename ReduceFunc = Plus>
-void cosine_transform_reduce_2d_(
-    StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y,
-    StridedView2D<const T> w, const T x_rownorm_i, const T* y_rownorm_data,
-    const TransformFunc& map) {
-
-    auto project = CosineProject{};
-    auto reduce = Plus{};
-    // Result type of calling map
-    using AccumulateType = typename std::decay<decltype(
-        map(std::declval<T>(), std::declval<T>(), std::declval<T>()))>::type;
-    intptr_t xs = x.strides[1], ys = y.strides[1], ws = w.strides[1];
-
-    intptr_t i = 0;
-
-    for (; i + (ilp_factor - 1) < x.shape[0]; i += ilp_factor) {
-        const T* x_rows[ilp_factor];
-        const T* y_rows[ilp_factor];
-        const T* w_rows[ilp_factor];
-        ForceUnroll<ilp_factor>{}([&](int k) {
-            x_rows[k] = &x(i + k, 0);
-            y_rows[k] = &y(i + k, 0);
-            w_rows[k] = &w(i + k, 0);
-        });
-
-        AccumulateType dist[ilp_factor] = {};
-        for (intptr_t j = 0; j < x.shape[1]; ++j) {
-            auto x_offset = j * xs;
-            auto y_offset = j * ys;
-            auto w_offset = j * ws;
-            ForceUnroll<ilp_factor>{}([&](int k) {
-                auto val = map(x_rows[k][x_offset], y_rows[k][y_offset], w_rows[k][w_offset]);
-                dist[k] = reduce(dist[k], val);
-            });
-        }
-
-        ForceUnroll<ilp_factor>{}([&](int k) {
-            out(i + k, 0) = project(dist[k], x_rownorm_i, y_rownorm_data[i + k]);
-        });
-    }
-
-    for (; i < x.shape[0]; ++i) {
-        const T* x_row = &x(i, 0);
-        const T* y_row = &y(i, 0);
-        const T* w_row = &w(i, 0);
-        AccumulateType dist = {};
-        for (intptr_t j = 0; j < x.shape[1]; ++j) {
-            auto val = map(x_row[j * xs], y_row[j * ys], w_row[j * ws]);
-            dist = reduce(dist, val);
-        }
-        out(i, 0) = project(dist, x_rownorm_i, y_rownorm_data[i]);
-    }
-}
-
 struct CosineDistance {
 
     template <typename T>
-    void operator()(StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y,
-                    const T x_rownorm_i, const T* y_rownorm_data) const {
-        cosine_transform_reduce_2d_(out, x, y, x_rownorm_i, y_rownorm_data, [](T x, T y) INLINE_LAMBDA {
+    void operator()(StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y) const {
+        transform_reduce_2d_(out, x, y, [](T x, T y) INLINE_LAMBDA {
             return x*y;
+        },
+        [](T cosine) INLINE_LAMBDA {
+            return std::clamp((T) 1. - cosine, (T) 0., (T) 2.0);
         });
     }
 
     template <typename T>
-    void operator()(StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y,
-                    StridedView2D<const T> w, const T x_rownorm_i, const T* y_rownorm_data) const {
-        cosine_transform_reduce_2d_(out, x, y, w, x_rownorm_i, y_rownorm_data, [](T x, T y, T w) INLINE_LAMBDA {
+    void operator()(StridedView2D<T> out, StridedView2D<const T> x, StridedView2D<const T> y, StridedView2D<const T> w) const {
+        transform_reduce_2d_(out, x, y, w, [](T x, T y, T w) INLINE_LAMBDA {
             return (w * x) * y;
+        },
+        [](T cosine) INLINE_LAMBDA {
+            return std::clamp((T) 1. - cosine, (T) 0., (T) 2.0);
         });
     }
 

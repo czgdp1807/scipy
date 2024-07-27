@@ -211,10 +211,34 @@ ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
 }
 
 template <typename T>
+ALWAYS_INLINE void _normalise_rows(const ArrayDescriptor& x,
+                    const intptr_t num_rowsX, const intptr_t num_cols,
+                    T* x_data, T* x_rownorm_data) {
+    for( intptr_t i = 0; i < num_rowsX; i++ ) {
+        T x_rownorm = x_rownorm_data[i];
+        intptr_t j;
+        for( j = 0; j + 3 < num_cols; j += 4 ) {
+            intptr_t index1 = i * x.strides[0] + j * x.strides[1];
+            intptr_t index2 = i * x.strides[0] + (j + 1) * x.strides[1];
+            intptr_t index3 = i * x.strides[0] + (j + 2) * x.strides[1];
+            intptr_t index4 = i * x.strides[0] + (j + 3) * x.strides[1];
+            x_data[index1] = x_data[index1]/x_rownorm;
+            x_data[index2] = x_data[index2]/x_rownorm;
+            x_data[index3] = x_data[index3]/x_rownorm;
+            x_data[index4] = x_data[index4]/x_rownorm;
+        }
+        for( ; j < num_cols; j++ ) {
+            intptr_t index = i * x.strides[0] + j * x.strides[1];
+            x_data[index] = x_data[index]/x_rownorm;
+        }
+    }
+}
+
+template <typename T>
 void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
-                ArrayDescriptor x, const T* x_data,
-                ArrayDescriptor y, const T* y_data,
-                CosineDistanceFunc<T> f) {
+                ArrayDescriptor x, T* x_data,
+                ArrayDescriptor y, T* y_data,
+                DistanceFunc<T> f) {
 
     const auto num_rowsX = x.shape[0];
     const auto num_rowsY = y.shape[0];
@@ -224,7 +248,11 @@ void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
     T* x_rownorm_data = norm_data;
     T* y_rownorm_data = norm_data + num_rowsX;
     _row_norms(x, num_rowsX, num_cols, x_data, x_rownorm_data);
+    _normalise_rows(x, num_rowsX, num_cols, x_data, x_rownorm_data);
     _row_norms(y, num_rowsY, num_cols, y_data, y_rownorm_data);
+    _normalise_rows(y, num_rowsY, num_cols, y_data, y_rownorm_data);
+
+    delete [] norm_data;
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
@@ -242,14 +270,11 @@ void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
     y_view.data = y_data;
 
     for (intptr_t i = 0; i < num_rowsX; ++i) {
-        f(out_view, x_view, y_view,
-          x_rownorm_data[i], y_rownorm_data);
+        f(out_view, x_view, y_view);
 
         out_view.data += out.strides[0];
         x_view.data += x.strides[0];
     }
-
-    delete [] norm_data;
 }
 
 template <typename T>
@@ -279,10 +304,10 @@ ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
 
 template <typename T>
 void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
-                ArrayDescriptor x, const T* x_data,
-                ArrayDescriptor y, const T* y_data,
+                ArrayDescriptor x, T* x_data,
+                ArrayDescriptor y, T* y_data,
                 ArrayDescriptor w, const T* w_data,
-                WeightedCosineDistanceFunc<T> f) {
+                WeightedDistanceFunc<T> f) {
 
     const auto num_rowsX = x.shape[0];
     const auto num_rowsY = y.shape[0];
@@ -292,7 +317,10 @@ void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
     T* x_rownorm_data = norm_data;
     T* y_rownorm_data = norm_data + num_rowsX;
     _row_norms(x, num_rowsX, num_cols, x_data, w, w_data, x_rownorm_data);
+    _normalise_rows(x, num_rowsX, num_cols, x_data, x_rownorm_data);
     _row_norms(y, num_rowsY, num_cols, y_data, w, w_data, y_rownorm_data);
+    _normalise_rows(y, num_rowsY, num_cols, y_data, y_rownorm_data);
+    delete [] norm_data;
 
     StridedView2D<T> out_view;
     out_view.strides = {out.strides[1], 0};
@@ -315,14 +343,11 @@ void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
     w_view.data = w_data;
 
     for (intptr_t i = 0; i < num_rowsX; ++i) {
-        f(out_view, x_view, y_view, w_view,
-          x_rownorm_data[i], y_rownorm_data);
+        f(out_view, x_view, y_view, w_view);
 
         out_view.data += out.strides[0];
         x_view.data += x.strides[0];
     }
-
-    delete [] norm_data;
 }
 
 template <typename T>
@@ -483,7 +508,7 @@ py::array cdist_unweighted(const py::array& out_obj, const py::array& x_obj,
 
 template <typename scalar_t>
 py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_obj,
-                        const py::array& y_obj, CosineDistanceFunc<scalar_t> f) {
+                        const py::array& y_obj, DistanceFunc<scalar_t> f) {
     auto x = npy_asarray<scalar_t>(x_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto y = npy_asarray<scalar_t>(y_obj,
@@ -493,9 +518,9 @@ py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_o
     auto out_desc = get_descriptor(out);
     auto out_data = out.mutable_data();
     auto x_desc = get_descriptor(x);
-    auto x_data = x.data();
+    scalar_t* x_data = const_cast<scalar_t*>(x.data());
     auto y_desc = get_descriptor(y);
-    auto y_data = y.data();
+    scalar_t* y_data = const_cast<scalar_t*>(y.data());
     {
         py::gil_scoped_release guard;
         cdist_cosine_impl(out_desc, out_data, x_desc,
@@ -508,7 +533,7 @@ template <typename scalar_t>
 py::array cdist_cosine_weighted(
         const py::array& out_obj, const py::array& x_obj,
         const py::array& y_obj, const py::array& w_obj,
-        WeightedCosineDistanceFunc<scalar_t> f) {
+        WeightedDistanceFunc<scalar_t> f) {
     auto x = npy_asarray<scalar_t>(x_obj,
                                  NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
     auto y = npy_asarray<scalar_t>(y_obj,
@@ -520,9 +545,9 @@ py::array cdist_cosine_weighted(
     auto out_desc = get_descriptor(out);
     auto out_data = out.mutable_data();
     auto x_desc = get_descriptor(x);
-    auto x_data = x.data();
+    scalar_t* x_data = const_cast<scalar_t*>(x.data());
     auto y_desc = get_descriptor(y);
-    auto y_data = y.data();
+    scalar_t* y_data = const_cast<scalar_t*>(y.data());
     auto w_desc = get_descriptor(w);
     auto w_data = w.data();
     {
