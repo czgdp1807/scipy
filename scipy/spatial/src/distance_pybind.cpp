@@ -185,172 +185,6 @@ void cdist_impl(ArrayDescriptor out, T* out_data,
 }
 
 template <typename T>
-ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
-                    const intptr_t num_rowsX, const intptr_t num_cols,
-                    const T* x_data, T* x_rownorm_data) {
-    for( intptr_t i = 0; i < num_rowsX; i++ ) {
-        T x_rownorm[4] = {0, 0, 0, 0};
-        intptr_t j;
-        for( j = 0; j + 3 < num_cols; j += 4 ) {
-            T x_ij0 = x_data[i * x.strides[0] + j * x.strides[1]];
-            T x_ij1 = x_data[i * x.strides[0] + (j + 1) * x.strides[1]];
-            T x_ij2 = x_data[i * x.strides[0] + (j + 2) * x.strides[1]];
-            T x_ij3 = x_data[i * x.strides[0] + (j + 3) * x.strides[1]];
-            x_rownorm[0] += x_ij0 * x_ij0;
-            x_rownorm[1] += x_ij1 * x_ij1;
-            x_rownorm[2] += x_ij2 * x_ij2;
-            x_rownorm[3] += x_ij3 * x_ij3;
-        }
-        for( ; j < num_cols; j++ ) {
-            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
-            x_rownorm[0] += x_ij * x_ij;
-        }
-        x_rownorm_data[i] = std::sqrt(
-            x_rownorm[0] + x_rownorm[1] + x_rownorm[2] + x_rownorm[3]);
-    }
-}
-
-template <typename T>
-ALWAYS_INLINE void _normalise_rows(const ArrayDescriptor& x,
-                    const intptr_t num_rowsX, const intptr_t num_cols,
-                    T* x_data, T* x_rownorm_data) {
-    for( intptr_t i = 0; i < num_rowsX; i++ ) {
-        T x_rownorm = x_rownorm_data[i];
-        intptr_t j;
-        for( j = 0; j + 3 < num_cols; j += 4 ) {
-            intptr_t index1 = i * x.strides[0] + j * x.strides[1];
-            intptr_t index2 = i * x.strides[0] + (j + 1) * x.strides[1];
-            intptr_t index3 = i * x.strides[0] + (j + 2) * x.strides[1];
-            intptr_t index4 = i * x.strides[0] + (j + 3) * x.strides[1];
-            x_data[index1] = x_data[index1]/x_rownorm;
-            x_data[index2] = x_data[index2]/x_rownorm;
-            x_data[index3] = x_data[index3]/x_rownorm;
-            x_data[index4] = x_data[index4]/x_rownorm;
-        }
-        for( ; j < num_cols; j++ ) {
-            intptr_t index = i * x.strides[0] + j * x.strides[1];
-            x_data[index] = x_data[index]/x_rownorm;
-        }
-    }
-}
-
-template <typename T>
-void cdist_cosine_impl(ArrayDescriptor out, T* out_data,
-                ArrayDescriptor x, T* x_data,
-                ArrayDescriptor y, T* y_data,
-                DistanceFunc<T> f) {
-
-    const auto num_rowsX = x.shape[0];
-    const auto num_rowsY = y.shape[0];
-    const auto num_cols = x.shape[1];
-
-    T* norm_data = new T[num_rowsX + num_rowsY];
-    T* x_rownorm_data = norm_data;
-    T* y_rownorm_data = norm_data + num_rowsX;
-    _row_norms(x, num_rowsX, num_cols, x_data, x_rownorm_data);
-    _normalise_rows(x, num_rowsX, num_cols, x_data, x_rownorm_data);
-    _row_norms(y, num_rowsY, num_cols, y_data, y_rownorm_data);
-    _normalise_rows(y, num_rowsY, num_cols, y_data, y_rownorm_data);
-
-    delete [] norm_data;
-
-    StridedView2D<T> out_view;
-    out_view.strides = {out.strides[1], 0};
-    out_view.shape = {num_rowsY, num_cols};
-    out_view.data = out_data;
-
-    StridedView2D<const T> x_view;
-    x_view.strides = {0, x.strides[1]};
-    x_view.shape = {num_rowsY, num_cols};
-    x_view.data = x_data;
-
-    StridedView2D<const T> y_view;
-    y_view.strides = {y.strides[0], y.strides[1]};
-    y_view.shape = {out_view.shape[0], num_cols};
-    y_view.data = y_data;
-
-    for (intptr_t i = 0; i < num_rowsX; ++i) {
-        f(out_view, x_view, y_view);
-
-        out_view.data += out.strides[0];
-        x_view.data += x.strides[0];
-    }
-}
-
-template <typename T>
-ALWAYS_INLINE void _row_norms(const ArrayDescriptor& x,
-                    const intptr_t num_rowsX, const intptr_t num_cols,
-                    const T* x_data, const ArrayDescriptor& w, const T* w_data,
-                    T* x_rownorm_data) {
-    for( intptr_t i = 0; i < num_rowsX; i++ ) {
-        T x_rownorm[2] = {0, 0};
-        intptr_t j;
-        for( j = 0; j + 1 < num_cols; j += 2 ) {
-            T x_ij0 = x_data[i * x.strides[0] + j * x.strides[1]];
-            T x_ij1 = x_data[i * x.strides[0] + (j + 1) * x.strides[1]];
-            T w_j0 = w_data[j];
-            T w_j1 = w_data[j + 1];
-            x_rownorm[0] += w_j0 * x_ij0 * x_ij0;
-            x_rownorm[1] += w_j1 * x_ij1 * x_ij1;
-        }
-        for( ; j < num_cols; j++ ) {
-            T x_ij = x_data[i * x.strides[0] + j * x.strides[1]];
-            T w_j = w_data[j];
-            x_rownorm[0] += w_j * x_ij * x_ij;
-        }
-        x_rownorm_data[i] = std::sqrt(x_rownorm[0] + x_rownorm[1]);
-    }
-}
-
-template <typename T>
-void cdist_cosine_weighted_impl(ArrayDescriptor out, T* out_data,
-                ArrayDescriptor x, T* x_data,
-                ArrayDescriptor y, T* y_data,
-                ArrayDescriptor w, const T* w_data,
-                WeightedDistanceFunc<T> f) {
-
-    const auto num_rowsX = x.shape[0];
-    const auto num_rowsY = y.shape[0];
-    const auto num_cols = x.shape[1];
-
-    T* norm_data = new T[num_rowsX + num_rowsY];
-    T* x_rownorm_data = norm_data;
-    T* y_rownorm_data = norm_data + num_rowsX;
-    _row_norms(x, num_rowsX, num_cols, x_data, w, w_data, x_rownorm_data);
-    _normalise_rows(x, num_rowsX, num_cols, x_data, x_rownorm_data);
-    _row_norms(y, num_rowsY, num_cols, y_data, w, w_data, y_rownorm_data);
-    _normalise_rows(y, num_rowsY, num_cols, y_data, y_rownorm_data);
-    delete [] norm_data;
-
-    StridedView2D<T> out_view;
-    out_view.strides = {out.strides[1], 0};
-    out_view.shape = {num_rowsY, num_cols};
-    out_view.data = out_data;
-
-    StridedView2D<const T> x_view;
-    x_view.strides = {0, x.strides[1]};
-    x_view.shape = {num_rowsY, num_cols};
-    x_view.data = x_data;
-
-    StridedView2D<const T> y_view;
-    y_view.strides = {y.strides[0], y.strides[1]};
-    y_view.shape = {out_view.shape[0], num_cols};
-    y_view.data = y_data;
-
-    StridedView2D<const T> w_view;
-    w_view.strides = {0, w.strides[0]};
-    w_view.shape = {num_rowsY, num_cols};
-    w_view.data = w_data;
-
-    for (intptr_t i = 0; i < num_rowsX; ++i) {
-        f(out_view, x_view, y_view, w_view);
-
-        out_view.data += out.strides[0];
-        x_view.data += x.strides[0];
-    }
-}
-
-template <typename T>
 void cdist_weighted_impl(ArrayDescriptor out, T* out_data,
                          ArrayDescriptor x, const T* x_data,
                          ArrayDescriptor y, const T* y_data,
@@ -502,60 +336,6 @@ py::array cdist_unweighted(const py::array& out_obj, const py::array& x_obj,
     {
         py::gil_scoped_release guard;
         cdist_impl(out_desc, out_data, x_desc, x_data, y_desc, y_data, f);
-    }
-    return std::move(out);
-}
-
-template <typename scalar_t>
-py::array cdist_cosine_unweighted(const py::array& out_obj, const py::array& x_obj,
-                        const py::array& y_obj, DistanceFunc<scalar_t> f) {
-    auto x = npy_asarray<scalar_t>(x_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto y = npy_asarray<scalar_t>(y_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto out = py::cast<py::array_t<scalar_t>>(out_obj);
-
-    auto out_desc = get_descriptor(out);
-    auto out_data = out.mutable_data();
-    auto x_desc = get_descriptor(x);
-    scalar_t* x_data = const_cast<scalar_t*>(x.data());
-    auto y_desc = get_descriptor(y);
-    scalar_t* y_data = const_cast<scalar_t*>(y.data());
-    {
-        py::gil_scoped_release guard;
-        cdist_cosine_impl(out_desc, out_data, x_desc,
-                          x_data, y_desc, y_data, f);
-    }
-    return std::move(out);
-}
-
-template <typename scalar_t>
-py::array cdist_cosine_weighted(
-        const py::array& out_obj, const py::array& x_obj,
-        const py::array& y_obj, const py::array& w_obj,
-        WeightedDistanceFunc<scalar_t> f) {
-    auto x = npy_asarray<scalar_t>(x_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto y = npy_asarray<scalar_t>(y_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto w = npy_asarray<scalar_t>(w_obj,
-                                 NPY_ARRAY_ALIGNED | NPY_ARRAY_NOTSWAPPED);
-    auto out = py::cast<py::array_t<scalar_t>>(out_obj);
-
-    auto out_desc = get_descriptor(out);
-    auto out_data = out.mutable_data();
-    auto x_desc = get_descriptor(x);
-    scalar_t* x_data = const_cast<scalar_t*>(x.data());
-    auto y_desc = get_descriptor(y);
-    scalar_t* y_data = const_cast<scalar_t*>(y.data());
-    auto w_desc = get_descriptor(w);
-    auto w_data = w.data();
-    {
-        py::gil_scoped_release guard;
-        validate_weights(w_desc, w_data);
-        cdist_cosine_weighted_impl(
-            out_desc, out_data, x_desc, x_data,
-            y_desc, y_data, w_desc, w_data, f);
     }
     return std::move(out);
 }
@@ -778,44 +558,6 @@ py::array cdist(const py::object& out_obj, const py::object& x_obj,
     return out;
 }
 
-template <typename Func>
-py::array cdist_cosine(const py::object& out_obj, const py::object& x_obj,
-                       const py::object& y_obj, const py::object& w_obj, Func&& f) {
-    auto x = npy_asarray(x_obj);
-    auto y = npy_asarray(y_obj);
-    if (x.ndim() != 2) {
-        throw std::invalid_argument("XA must be a 2-dimensional array.");
-    }
-    if (y.ndim() != 2) {
-        throw std::invalid_argument("XB must be a 2-dimensional array.");
-    }
-    const intptr_t m = x.shape(1);
-    if (m != y.shape(1)) {
-        throw std::invalid_argument(
-            "XA and XB must have the same number of columns "
-            "(i.e. feature dimension).");
-    }
-
-    std::array<intptr_t, 2> out_shape{{x.shape(0), y.shape(0)}};
-    if (w_obj.is_none()) {
-        auto dtype = promote_type_real(common_type(x.dtype(), y.dtype()));
-        auto out = prepare_out_argument(out_obj, dtype, out_shape);
-        DISPATCH_DTYPE(dtype, [&]{
-            cdist_cosine_unweighted<scalar_t>(out, x, y, f);
-        });
-        return out;
-    }
-
-    auto w = prepare_single_weight(w_obj, m);
-    auto dtype = promote_type_real(
-        common_type(x.dtype(), y.dtype(), w.dtype()));
-    auto out = prepare_out_argument(out_obj, dtype, out_shape);
-    DISPATCH_DTYPE(dtype, [&]{
-        cdist_cosine_weighted<scalar_t>(out, x, y, w, f);
-    });
-    return out;
-}
-
 PYBIND11_MODULE(_distance_pybind, m) {
     if (_import_array() != 0) {
         throw py::error_already_set();
@@ -976,7 +718,7 @@ PYBIND11_MODULE(_distance_pybind, m) {
           "x"_a, "y"_a, "w"_a=py::none(), "out"_a=py::none());
     m.def("cdist_cosine",
           [](py::object x, py::object y, py::object w, py::object out) {
-              return cdist_cosine(out, x, y, w, CosineDistance{});
+              return cdist(out, x, y, w, CosineDistance{});
           },
           "x"_a, "y"_a, "w"_a=py::none(), "out"_a=py::none());
     m.def("cdist_minkowski",
