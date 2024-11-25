@@ -36,7 +36,7 @@ jobs:
     if: >
       needs.get_commit_message.outputs.message == 1
       && (github.repository == 'czgdp1807/scipy' || github.repository == '')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-20.04.2
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -86,6 +86,7 @@ jobs:
         run: |
           . /opt/intel/oneapi/setvars.sh --force
           conda activate scipy-dev
+          conda remove -y compilers
           unset FFLAGS
           CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
