@@ -233,11 +233,9 @@ def test_all_modules_are_expected():
         # with the installed NumPy version, there can be errors on importing
         # `array_api_compat`. This should only raise if SciPy is configured with
         # that library as an available backend.
-        backends = {'cupy': 'cupy',
-                    'pytorch': 'torch',
-                    'dask.array': 'dask.array'}
-        for backend, dir_name in backends.items():
-            path = f'array_api_compat.{dir_name}'
+        backends = {'cupy', 'torch', 'dask.array'}
+        for backend in backends:
+            path = f'array_api_compat.{backend}'
             if path in name and backend not in xp_available_backends:
                 return
         raise
@@ -452,10 +450,6 @@ def test_private_but_present_deprecation(module_name, correct_module):
     # Attributes that were formerly in `module_name` can still be imported from
     # `module_name`, albeit with a deprecation warning.
     for attr_name in module.__all__:
-        if attr_name == "varmats_from_mat":
-            # defer handling this case, see
-            # https://github.com/scipy/scipy/issues/19223
-            continue
         # ensure attribute is present where the warning is pointing
         assert getattr(correct_import, attr_name, None) is not None
         message = f"Please import `{attr_name}` from the `{import_name}`..."
