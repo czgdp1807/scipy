@@ -86,10 +86,10 @@ jobs:
         run: |
           . /opt/intel/oneapi/setvars.sh --force
           conda activate scipy-dev
-          which ld
           conda remove -y compilers
           conda remove -y pythran
           pip install pythran
+          which ld
           unset FFLAGS
           CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
