@@ -59,11 +59,6 @@ jobs:
           miniforge-version: latest
           use-mamba: true
 
-      - name: Install binutils
-        run: |
-          sudo apt-get update
-          sudo apt-get install binutils-x86-64-gnu=2.34*
-
       - name: Update Conda Environment
         run: |
           mamba env update -n scipy-dev -f environment.yml
