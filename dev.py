@@ -749,7 +749,7 @@ class Test(Task):
         except OSError as err:
             if err.errno == errno.ENOENT:
                 print(f"Error when running '{lcov_cmd_str}': {err}\n")
-                print("You need to LCOV (https://lcov.readthedocs.io/en/latest/)")
+                print("You need to install LCOV (https://lcov.readthedocs.io/en/latest/)")
                 print("to capture test coverage of C/C++/Fortran code in SciPy")
                 return False
             raise
