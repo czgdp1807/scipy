@@ -751,7 +751,7 @@ class Test(Task):
                 print(f"Error when running '{lcov_cmd_str}': {err}\n")
                 print("You need to LCOV (https://lcov.readthedocs.io/en/latest/)")
                 print("to capture test coverage of C/C++/Fortran code in SciPy")
-                return 1
+                return False
             raise
 
         print("Generating lcov HTML output...")
@@ -765,6 +765,8 @@ class Test(Task):
             print("genhtml failed!")
         else:
             print("HTML output generated under build/lcov/")
+
+        return ret == 0
 
     @classmethod
     def scipy_tests(cls, args, pytest_args):
@@ -836,8 +838,8 @@ class Test(Task):
                 if not result:
                     print("Tests should succeed to generate "
                           "coverage reports using LCOV")
-
-                return cls.run_lcov(dirs)
+                else:
+                    return cls.run_lcov(dirs)
         return result
 
     @classmethod
