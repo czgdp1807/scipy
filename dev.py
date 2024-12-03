@@ -837,7 +837,7 @@ class Test(Task):
                     print("Tests should succeed to generate "
                           "coverage reports using LCOV")
 
-                cls.run_lcov(dirs)
+                return cls.run_lcov(dirs)
         return result
 
     @classmethod
