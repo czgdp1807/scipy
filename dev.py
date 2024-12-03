@@ -741,7 +741,8 @@ class Test(Task):
         lcov_cmd = [
             "lcov", "--capture",
             "--directory", BUILD_DIR,
-            "--output-file", LCOV_OUTPUT_FILE]
+            "--output-file", LCOV_OUTPUT_FILE,
+            "--no-external"]
         lcov_cmd_str = " ".join(lcov_cmd)
         emit_cmdstr(" ".join(lcov_cmd))
         try:
