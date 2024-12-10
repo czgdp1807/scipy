@@ -60,6 +60,7 @@ static SuperLUGlobalObject *get_tls_global(void)
         This helps in avoiding in memory leak due to dangling reference of obj.
     */
     Py_DECREF(obj);
+    assert( Py_REFCNT((PyObject*) obj) == 1 );
     return obj;
 #endif
 }
