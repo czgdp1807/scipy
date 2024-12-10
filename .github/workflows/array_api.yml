@@ -48,7 +48,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -113,4 +113,3 @@ jobs:
         export OMP_NUM_THREADS=2
         # expand as more modules are supported by adding to `XP_TESTS` above
         python dev.py --no-build test -b all $XP_TESTS -- --durations 3 --timeout=60
-
