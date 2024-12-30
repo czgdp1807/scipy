@@ -249,35 +249,35 @@ def test(*, parent_callback, pytest_args, tests, coverage,
 
         return ret == 0
 
-    build_dir = os.path.abspath(kwargs['build_dir'])
-    site_package_dir = get_site_packages(build_dir)
+    # build_dir = os.path.abspath(kwargs['build_dir'])
+    # site_package_dir = get_site_packages(build_dir)
 
-    if site_package_dir is None and coverage:
-        raise FileNotFoundError(
-            "SciPy build not found, please execute "
-            "``spin build`` before calling ``spin test --coverage``. "
-            "We need it to figure out whether ``lcov`` can be called or not.")
+    # if site_package_dir is None and coverage:
+    #     raise FileNotFoundError(
+    #         "SciPy build not found, please execute "
+    #         "``spin build`` before calling ``spin test --coverage``. "
+    #         "We need it to figure out whether ``lcov`` can be called or not.")
 
-    if site_package_dir is not None:
-        with working_dir(site_package_dir):
-            sys.path.insert(0, site_package_dir)
-            os.environ['PYTHONPATH'] = \
-                os.pathsep.join((site_package_dir, os.environ.get('PYTHONPATH', '')))
-            was_built_with_gcov_flag = len(list(Path(build_dir).rglob("*.gcno"))) > 0
-            if was_built_with_gcov_flag:
-                config = importlib.import_module("scipy.__config__").show(mode='dicts')
-                compilers_config = config['Compilers']
-                cpp = compilers_config['c++']['name']
-                c = compilers_config['c']['name']
-                fortran = compilers_config['fortran']['name']
-                if not (c == 'gcc' and cpp == 'gcc' and fortran == 'gcc'):
-                    print("SciPy was built with --gcov flag which requires "
-                        "LCOV while running tests.\nFurther, LCOV usage "
-                        "requires GCC for C, C++ and Fortran codes in SciPy.\n"
-                        "Compilers used currently are:\n"
-                        f"  C: {c}\n  C++: {cpp}\n  Fortran: {fortran}\n"
-                        "Therefore, exiting without running tests.")
-                    exit(1) # Exit because tests will give missing symbol error
+    # if site_package_dir is not None:
+    #     with working_dir(site_package_dir):
+    #         sys.path.insert(0, site_package_dir)
+    #         os.environ['PYTHONPATH'] = \
+    #             os.pathsep.join((site_package_dir, os.environ.get('PYTHONPATH', '')))
+    #         was_built_with_gcov_flag = len(list(Path(build_dir).rglob("*.gcno"))) > 0
+    #         if was_built_with_gcov_flag:
+    #             config = importlib.import_module("scipy.__config__").show(mode='dicts')
+    #             compilers_config = config['Compilers']
+    #             cpp = compilers_config['c++']['name']
+    #             c = compilers_config['c']['name']
+    #             fortran = compilers_config['fortran']['name']
+    #             if not (c == 'gcc' and cpp == 'gcc' and fortran == 'gcc'):
+    #                 print("SciPy was built with --gcov flag which requires "
+    #                     "LCOV while running tests.\nFurther, LCOV usage "
+    #                     "requires GCC for C, C++ and Fortran codes in SciPy.\n"
+    #                     "Compilers used currently are:\n"
+    #                     f"  C: {c}\n  C++: {cpp}\n  Fortran: {fortran}\n"
+    #                     "Therefore, exiting without running tests.")
+    #                 exit(1) # Exit because tests will give missing symbol error
 
     if submodule:
         tests = PROJECT_MODULE + "." + submodule
@@ -306,14 +306,14 @@ def test(*, parent_callback, pytest_args, tests, coverage,
     if len(array_api_backend) != 0:
         os.environ['SCIPY_ARRAY_API'] = json.dumps(list(array_api_backend))
 
-    if sys.platform == "darwin" and site_package_dir is not None:
-        # Temporary workaround for Apple linker.
-        # Refer, https://github.com/scipy/scipy/pull/21674#issuecomment-2516438231
-        # for more details. Must be removed before merging
-        os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = os.path.join(
-            site_package_dir,
-            os.path.join("scipy", "special")
-        )
+    # if sys.platform == "darwin" and site_package_dir is not None:
+    #     # Temporary workaround for Apple linker.
+    #     # Refer, https://github.com/scipy/scipy/pull/21674#issuecomment-2516438231
+    #     # for more details. Must be removed before merging
+    #     os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = os.path.join(
+    #         site_package_dir,
+    #         os.path.join("scipy", "special")
+    #     )
 
     # try:
     parent_callback(**{"pytest_args": pytest_args, "tests": tests,
