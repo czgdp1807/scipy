@@ -138,7 +138,7 @@ def _validate_inputs(x, y, w, k, s, xb, xe, parametric):
     return x, y, w, k, s, xb, xe
 
 
-def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
+def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
     """Generate knot vectors until the Least SQuares (LSQ) criterion is satified.
 
     Parameters
@@ -226,10 +226,11 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
         x, y, w, k, s, xb, xe, parametric=np.ndim(y) == 2
     )
 
-    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, nest=nest)
+
+    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, nest=nest, periodic=periodic)
 
 
-def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
+def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
 
     acc = s * TOL
     m = x.size    # the number of data points
@@ -254,6 +255,14 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None)
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
     for _ in range(m):
+        if periodic:
+            per = xe - xb
+            n = t.shape[0]
+            t[k] = xb
+            t[n - k - 1] = xe
+            for j in range(1, k + 1):
+                t[k - j] = t[n - k - j - 1] - per
+                t[n - k + j - 1] = t[k + j] + per
         yield t
 
         # construct the LSQ spline with this set of knots
@@ -647,7 +656,7 @@ def root_rati(f, p0, bracket, acc):
     return Bunch(converged=converged, root=p, iterations=it, ier=ier)
 
 
-def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
+def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
     """Shared infra for make_splrep and make_splprep.
     """
     acc = s * TOL
@@ -659,12 +668,12 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
         nest = max(m + k + 1, 2*k + 3)
     else:
         if nest < 2*(k + 1):
-            raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")    
+            raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
         if t is not None:
             raise ValueError("Either supply `t` or `nest`.")
 
     if t is None:
-        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe, nest=nest)
+        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe, nest=nest, periodic=periodic)
         t = list(gen)[-1]
     else:
         fpcheck(x, t, k)
@@ -711,7 +720,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     return f.spl
 
 
-def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
+def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
     r"""Create a smoothing B-spline function with bounded error, minimizing derivative jumps.
 
     Given the set of data points ``(x[i], y[i])``, determine a smooth spline
@@ -837,7 +846,7 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
 
     x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe, parametric=False)
 
-    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, t=t, nest=nest)
+    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, t=t, nest=nest, periodic=periodic)
 
     # postprocess: squeeze out the last dimension: was added to simplify the internals.
     spl.c = spl.c[:, 0]
@@ -989,4 +998,3 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
     spl1 = BSpline(spl.t, cc, spl.k, axis=1)
 
     return spl1, u
-
