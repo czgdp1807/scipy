@@ -69,7 +69,7 @@ jobs:
 
       - name: Debug step
         run: |
-          cd C:\Program Files (x86)\Intel\oneAPI
+          cd C:\"Program Files (x86)"\Intel\oneAPI
 
       # - name: Setup Conda
       #   uses: conda-incubator/setup-miniconda@d2e6a045a86077fb6cad6f5adf368e9076ddaa8d # v3.1.0
