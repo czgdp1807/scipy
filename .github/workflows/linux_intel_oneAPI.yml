@@ -71,39 +71,39 @@ jobs:
           printenv LINUX_HPCKIT_URL
           bash tools/install_intel_oneAPI_linux.sh $LINUX_HPCKIT_URL
 
-      # - name: Setup Conda
-      #   uses: conda-incubator/setup-miniconda@d2e6a045a86077fb6cad6f5adf368e9076ddaa8d # v3.1.0
-      #   with:
-      #     python-version: ${{ matrix.python-version }}
-      #     channels: conda-forge
-      #     channel-priority: true
-      #     activate-environment: scipy-dev
-      #     use-only-tar-bz2: false
-      #     miniforge-variant: Miniforge3
-      #     miniforge-version: latest
-      #     use-mamba: true
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@d2e6a045a86077fb6cad6f5adf368e9076ddaa8d # v3.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          channels: conda-forge
+          channel-priority: true
+          activate-environment: scipy-dev
+          use-only-tar-bz2: false
+          miniforge-variant: Miniforge3
+          miniforge-version: latest
+          use-mamba: true
 
-      # - name: Update Conda Environment
-      #   shell: bash -l {0}
-      #   run: |
-      #     conda activate scipy-dev
-      #     conda install -c conda-forge pkg-config meson meson-python ninja numpy cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich-click click doit pydevtool hypothesis
+      - name: Update Conda Environment
+        shell: bash -l {0}
+        run: |
+          conda activate scipy-dev
+          conda install -c conda-forge pkg-config meson meson-python ninja numpy cython pybind11 pytest pytest-xdist pytest-timeout pytest-fail-slow pooch rich-click click doit pydevtool hypothesis
 
-      # - name: Initialise Intel oneAPI and Build SciPy
-      #   shell: bash -l {0}
-      #   run: |
-      #     . /opt/intel/oneapi/setvars.sh --force
-      #     conda activate scipy-dev
-      #     # Note that we have to install Pythran from PyPI to avoid pulling in compilers
-      #     # from conda-forge (those may break Intel Fortran, which rely on system GCC/Clang,
-      #     # xref https://github.com/conda-forge/pythran-feedstock/issues/77).
-      #     pip install pythran
-      #     unset FFLAGS
-      #     CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
+      - name: Initialise Intel oneAPI and Build SciPy
+        shell: bash -l {0}
+        run: |
+          . /opt/intel/oneapi/setvars.sh --force
+          conda activate scipy-dev
+          # Note that we have to install Pythran from PyPI to avoid pulling in compilers
+          # from conda-forge (those may break Intel Fortran, which rely on system GCC/Clang,
+          # xref https://github.com/conda-forge/pythran-feedstock/issues/77).
+          pip install pythran
+          unset FFLAGS
+          CC=icx CXX=icpx FC=ifx python dev.py build -C-Dblas=mkl-dynamic-lp64-iomp -C-Dlapack=mkl-dynamic-lp64-iomp
 
-      # - name: Test scipy
-      #   shell: bash -l {0}
-      #   run: |
-      #     . /opt/intel/oneapi/setvars.sh --force
-      #     conda activate scipy-dev
-      #     python dev.py test
+      - name: Test scipy
+        shell: bash -l {0}
+        run: |
+          . /opt/intel/oneapi/setvars.sh --force
+          conda activate scipy-dev
+          python dev.py test
