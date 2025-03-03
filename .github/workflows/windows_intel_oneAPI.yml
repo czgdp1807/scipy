@@ -69,7 +69,7 @@ jobs:
 
       - name: Debug step
         run: |
-          cd C:\"Program Files (x86)"\Intel\oneAPI
+          cd C:\"Program Files (x86)"\Intel\oneAPI\compiler
           dir
 
       # - name: Setup Conda
