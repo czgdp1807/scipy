@@ -1367,7 +1367,7 @@ def _make_periodic_spline(x, y, t, k, axis):
 
 
 def make_interp_spline(x, y, k=3, t=None, bc_type=None, axis=0,
-                       check_finite=True):
+                       check_finite=True, periodic=False):
     """Create an interpolating B-spline with specified degree and boundary conditions.
 
     Parameters
@@ -1856,7 +1856,7 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
 # LSQ spline helpers #
 ######################
 
-def _lsq_solve_qr(x, y, t, k, w):
+def _lsq_solve_qr(x, y, t, k, w, periodic=False):
     """Solve for the LSQ spline coeffs given x, y and knots.
 
     `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
@@ -1866,11 +1866,19 @@ def _lsq_solve_qr(x, y, t, k, w):
     assert y.ndim == 2
 
     y_w = y * w[:, None]
-    A, offset, nc = _dierckx.data_matrix(x, t, k, w)
-    _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
-    c = _dierckx.fpback(A, nc, y_w)
-
-    return A, y_w, c
+    if not periodic:
+        A, offset, nc = _dierckx.data_matrix(x, t, k, w)
+        _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
+        c = _dierckx.fpback(A, nc, y_w)
+        return A, y_w, c
+    else:
+        R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
+        # A1, A2 = _dierckx.qr_reduce_periodic(R, H1, H2, offset, nc, y_w)         # modifies arguments in-place
+        # c = _dierckx.fpbacp(A1, A2, nc, y_w)
+        # return A1, A2, y_w, c
+        _dierckx.qr_reduce(R, offset, nc, y_w)         # modifies arguments in-place
+        c = _dierckx.fpback(R, nc, y_w)
+        return A, y_w, c
 
 
 #############################
