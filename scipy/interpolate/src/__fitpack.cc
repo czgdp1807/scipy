@@ -171,10 +171,84 @@ data_matrix( /* inputs */
     *nc = len_t - k - 1;
 }
 
+void
+data_matrix_periodic( /* inputs */
+            const double *xptr, int64_t m,      // x, shape (m,)
+            const double *tptr, int64_t len_t,  // t, shape (len_t,)
+            int k,
+            const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+            int extrapolate,
+            /* outputs */
+            double *Aptr,                       // A, shape(m, k+1)
+            double *H1ptr,                      // H1, shape(m, k+1)
+            double *H2ptr,                      // H2, shape(m, k+1)
+            int64_t *offset_ptr,                // offset, shape (m,)
+            int64_t *nc,                        // the number of coefficient
+            /* work array*/
+            double *wrk)                        // work, shape (2k+2)
+{
+    auto x = ConstRealArray1D(xptr, m);
+    auto t = ConstRealArray1D(tptr, len_t);
+    auto w = ConstRealArray1D(wptr, m);
+    auto A = RealArray2D(Aptr, m, k+1);
+    auto H1 = RealArray2D(H1ptr, m, k+1);
+    auto H2 = RealArray2D(H2ptr, m, k);
+    auto offset = Array1D<int64_t, false>(offset_ptr, m);
+
+    int64_t ind = k;
+    for (int i=0; i < m; ++i) {
+        double xval = x(i);
+
+        // find the interval
+        ind = _find_interval(t.data, len_t, k, xval, ind, extrapolate);
+        if (!extrapolate && (ind < 0)){
+            // should not happen here, validation is expected on the python side
+            throw std::runtime_error("find_interval: out of bounds with x = " + std::to_string(xval));
+        }
+        int64_t offseti = ind - k;
+        offset(i) = offseti;
+
+        // compute non-zero b-splines
+        _deBoor_D(t.data, xval, k, ind, 0, wrk);
+
+        for (int64_t j=0; j < k+1; ++j) {
+            A(i, j) = wrk[j] * w(i);
+        }
+
+        int64_t l = ind + 1;
+        if( l >= len_t - 2*k ) {
+            int64_t j;
+            for( j=0; j < k; ++j ) {
+                H1(i, j) = 0;
+                H2(i, j) = 0;
+            }
+            H1(i, k) = 0;
+
+            j = l - len_t + 2*k;
+            for( int64_t i1 = 0; i1 < k+1; i1++ ) {
+                j = j + 1;
+                int64_t l0 = j;
+                int64_t l1 = l0 - k;
+                while (l1 > std::max(int64_t(0), len_t - 3*k - 1)) {
+                    l0 = l1 - len_t + 3*k + 1;
+                    l1 = l0 - k;
+                }
+                if( l1 > 0 ) {
+                    H1(i, l1 - 1) = wrk[i1] * w(i);
+                } else {
+                    H2(i, l0 - 1) = H2(i, l0 - 1) + wrk[i1] * w(i);
+                }
+            }
+        }
+    }
+
+    *nc = len_t - k - 1;
+}
+
 
 /*
  *   Solve the LSQ problem ||y - A@c||^2 via QR factorization.
- *  
+ *
     QR factorization follows FITPACK: we reduce A row-by-row by Givens rotations.
     To zero out the lower triangle, we use in the row `i` and column `j < i`,
     the diagonal element in that column. That way, the sequence is
