@@ -81,7 +81,7 @@ py_fpknot(PyObject* self, PyObject *args)
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
-        return NULL;        
+        return NULL;
     };
 }
 
@@ -120,7 +120,7 @@ py_fpback(PyObject* self, PyObject *args)
     if (nc > m) {
         std::string msg = "nc = " + std::to_string(nc) + " > m = " + std::to_string(m);
         PyErr_SetString(PyExc_ValueError, msg.c_str());
-        return NULL;        
+        return NULL;
     }
 
     // allocate the output buffer
@@ -128,7 +128,7 @@ py_fpback(PyObject* self, PyObject *args)
     PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
     if (a_c == NULL) {
         PyErr_NoMemory();
-        return NULL;     
+        return NULL;
     }
 
     try {
@@ -683,7 +683,7 @@ py_evaluate_all_bspl(PyObject* self, PyObject* args)
 }
 
 
-static char doc_find_interval[] = 
+static char doc_find_interval[] =
     "Find an interval such that t[interval] <= xval < t[interval+1]. \n"
     "\n"
     "Uses a linear search with locality, see fitpack's splev. \n"
@@ -1053,8 +1053,13 @@ py_coloc_nd(PyObject *self, PyObject *args)
 /////////////////////////////////////
 
 static PyMethodDef DierckxMethods[] = {
+<<<<<<< HEAD
     /* FITPACK replacement helpers*/
     {"fpknot", py_fpknot, METH_VARARGS, 
+=======
+    //...
+    {"fpknot", py_fpknot, METH_VARARGS,
+>>>>>>> 453359c02 (MISC: Styling updates)
      "fpknot replacement"},
     {"fpback", py_fpback, METH_VARARGS,
      "backsubstitution, triangular matrix"},

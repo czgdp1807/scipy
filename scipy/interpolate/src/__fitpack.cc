@@ -632,7 +632,7 @@ norm_eq_lsq(const double *xptr, int64_t m,            // x, shape (m,)
             row = left - k + r;
             for (s=0; s < r+1; s++) {
                 clmn = left - k + s;
-                abT(clmn, r-s) += wrk[r] * wrk[s] * wval;   // NB: rows/cols swapped for F order                
+                abT(clmn, r-s) += wrk[r] * wrk[s] * wval;   // NB: rows/cols swapped for F order
             }
 
             // ... rhs = A.T @ y
