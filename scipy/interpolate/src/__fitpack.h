@@ -143,6 +143,22 @@ data_matrix(/* inputs */
             double *wrk                         // work, shape (2k+2)
 );
 
+void
+data_matrix_periodic( /* inputs */
+    const double *xptr, int64_t m,      // x, shape (m,)
+    const double *tptr, int64_t len_t,  // t, shape (len_t,)
+    int k,
+    const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+    int extrapolate,
+    /* outputs */
+    double *Aptr,                       // A, shape(m, k+1)
+    double *H1ptr,                      // H1, shape(m, k+1)
+    double *H2ptr,                      // H2, shape(m, k+1)
+    int64_t *offset_ptr,                // offset, shape (m,)
+    int64_t *nc,                        // the number of coefficient
+    /* work array*/
+    double *wrk                        // work, shape (2k+2)
+);
 
 /*
     Solve the LSQ problem ||y - A@c||^2 via QR factorization.
