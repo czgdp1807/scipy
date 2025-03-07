@@ -219,8 +219,9 @@ py_data_matrix(PyObject *self, PyObject *args)
     int64_t nc;
     int k;
     int extrapolate = 0;   // default is False
+    int periodic = 0;
 
-    if(!PyArg_ParseTuple(args, "OOiO|p", &py_x, &py_t, &k, &py_w, &extrapolate)) {
+    if(!PyArg_ParseTuple(args, "OOiO|pp", &py_x, &py_t, &k, &py_w, &extrapolate, &periodic)) {
         return NULL;
     }
 
@@ -244,6 +245,9 @@ py_data_matrix(PyObject *self, PyObject *args)
 
     // allocate temp and output arrays
     npy_intp m = PyArray_DIM(a_x, 0);
+    if( periodic ) {
+        m--;
+    }
     npy_intp dims[2] = {m, k+1};
     PyArrayObject *a_A = (PyArrayObject*)PyArray_EMPTY(2, dims, NPY_DOUBLE, 0);
     // np.zeros(m, dtype=np.intp)
@@ -258,22 +262,53 @@ py_data_matrix(PyObject *self, PyObject *args)
     }
 
     try {
-        // heavy lifting happens here
-        fitpack::data_matrix(
-            static_cast<const double *>(PyArray_DATA(a_x)), m,
-            static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
-            k,
-            static_cast<const double *>(PyArray_DATA(a_w)),
-            extrapolate,
-            static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, offset, nc)
-            static_cast<int64_t*>(PyArray_DATA(a_offs)),
-            &nc,
-            wrk.data()
-        );
+        if( !periodic ) {
+            // heavy lifting happens here
+            fitpack::data_matrix(
+                static_cast<const double *>(PyArray_DATA(a_x)), m,
+                static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                k,
+                static_cast<const double *>(PyArray_DATA(a_w)),
+                extrapolate,
+                static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, offset, nc)
+                static_cast<int64_t*>(PyArray_DATA(a_offs)),
+                &nc,
+                wrk.data()
+            );
 
-        // np.asarray(A), np.asarray(offset), int(nc)
-        PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
-        return Py_BuildValue("(NNN)", PyArray_Return(a_A), PyArray_Return(a_offs), py_nc);
+            // np.asarray(A), np.asarray(offset), int(nc)
+            PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
+            return Py_BuildValue("(NNN)", PyArray_Return(a_A), PyArray_Return(a_offs), py_nc);
+        } else {
+            PyArrayObject *a_H1 = (PyArrayObject*)PyArray_EMPTY(2, dims, NPY_DOUBLE, 0);
+            npy_intp dims_H2[2] = {m, k};
+            PyArrayObject *a_H2 = (PyArrayObject*)PyArray_EMPTY(2, dims_H2, NPY_DOUBLE, 0);
+            if ((a_H1 == NULL) || (a_H2 == NULL)) {
+                PyErr_NoMemory();
+                Py_XDECREF(a_H1);
+                Py_XDECREF(a_H2);
+                return NULL;
+            }
+            // heavy lifting happens here
+            fitpack::data_matrix_periodic(
+                static_cast<const double *>(PyArray_DATA(a_x)), m,
+                static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                k,
+                static_cast<const double *>(PyArray_DATA(a_w)),
+                extrapolate,
+                static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, H1, H2, offset, nc)
+                static_cast<double *>(PyArray_DATA(a_H1)),
+                static_cast<double *>(PyArray_DATA(a_H2)),
+                static_cast<int64_t*>(PyArray_DATA(a_offs)),
+                &nc,
+                wrk.data()
+            );
+
+            // np.asarray(A), np.asarray(offset), int(nc)
+            PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
+            return Py_BuildValue("(NNNNN)", PyArray_Return(a_A), PyArray_Return(a_H1),
+                PyArray_Return(a_H2), PyArray_Return(a_offs), py_nc);
+        }
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
