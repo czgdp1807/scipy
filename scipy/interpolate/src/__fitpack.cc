@@ -555,6 +555,86 @@ fpback( /* inputs*/
     }
 }
 
+void _fpbacp(
+        ConstRealArray2D& A1,
+        ConstRealArray2D& A2,
+        ConstRealArray1D& Z,
+        int k, int64_t len_t,
+        RealArray2D& c) {
+
+    int64_t nc = len_t - k - 1;
+    int64_t n = nc - k;
+    int64_t n2 = n - k;
+    int64_t l = n;
+    for( int64_t i = 1; i <= k; i++ ) {
+        double store = Z(l - 1);
+        int64_t j = k + 2 - i;
+        if( i != 1 ) {
+            int64_t l0 = l;
+            for( int64_t l1 = j; l1 <= k; l1++ ) {
+                l0 = l0 + 1;
+                store = store - c(l0 - 1, 0) * A2(l - 1, l1 - 1);
+            }
+        }
+        c(l - 1, 0) = store/A2(l - 1, j - 2);
+        l = l - 1;
+        if( l == 0 ) {
+            return ;
+        }
+    }
+    for( int64_t i = 1; i <= n2; i++ ) {
+        double store = Z(i - 1);
+        l = n2;
+        for( int64_t j = 1; j <= k; j++ ) {
+            l = l + 1;
+            store = store - c(l - 1, 0) * A2(i - 1, j - 1);
+        }
+        c(i - 1, 0) = store;
+    }
+    int64_t i = n2;
+    c(i - 1, 0) = c(i - 1, 0)/A1(i - 1, 0);
+    if( i == 1 ) {
+        return ;
+    }
+    for( int64_t j = 2; j <= n2; j++ ) {
+        i = i - 1;
+        double store = c(i - 1, 0);
+        int64_t i1 = k;
+        if( j <= k ) {
+            i1 = j - 1;
+        }
+        l = i;
+        for( int64_t l0 = 1; l0 <= i1; l0++ ) {
+            l = l + 1;
+            store = store - c(l - 1, 0) * A1(i - 1, l0);
+        }
+        c(i - 1, 0) = store/A1(i - 1, 0);
+    }
+}
+
+void
+fpbacp( /* inputs*/
+       const double *A1ptr,
+       const double *A2ptr,
+       const double *Zptr,
+       int k, int64_t len_t,
+       /* output */
+       double *cptr) {
+
+    int64_t nc = len_t - k - 1;
+    auto A1 = ConstRealArray2D(A1ptr, nc, k + 1);
+    auto A2 = ConstRealArray2D(A2ptr, nc - k, k);
+    auto Z = ConstRealArray1D(Zptr, nc);
+    auto c = RealArray2D(cptr, nc, 1);
+
+    _fpbacp(A1, A2, Z, k, len_t, c);
+
+    int64_t offset = len_t - 2*k - 1;
+    for( int64_t i = 0; i < k; i++ ) {
+        c(i + offset, 0) = c(i, 0);
+    }
+}
+
 
 /*
  * A helper for _fpknot:
