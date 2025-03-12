@@ -172,6 +172,22 @@ qr_reduce(double *aptr, const int64_t m, const int64_t nz, // a(m, nz), packed
           const int64_t startrow=1
 );
 
+/*
+    Solve the LSQ problem ||y - A@c||^2 via QR factorization
+    for periodic splines.
+*/
+void
+qr_reduce_periodic(double *aptr, double *h1, double *h2,   // a(m, nz), h1(m, nz), h2(m, nz) packed
+          const int64_t m, const int64_t nz,
+          int64_t *offset,                                 // offset(m)
+          const int64_t nc,                                // dense would be a(m, nc)
+          double *yptr, const int64_t ydim1,               // y(m, ydim2)
+          const int k, const int64_t len_t,
+          double *a1ptr,                                   // A1(len_t - k - 1, k + 1)
+          double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
+          double *z                                        // z(len_t - k - 1)
+);
+
 
 /*
  * Back substitution solve of `R @ c = y` with an upper triangular R.
