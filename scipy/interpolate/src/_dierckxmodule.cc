@@ -203,6 +203,87 @@ py_qr_reduce(PyObject* self, PyObject *args, PyObject *kwargs)
 }
 
 
+/*
+ * def _qr_reduce_periodic(double[:, ::1] a, double[:, ::1] a1, double[:, ::1] a2,     # A packed
+                           ssize_t[::1] offset, ssize_t nc, double[:, ::1] y,
+ *                         int k, int64_t len_t
+ * ):
+ */
+static PyObject*
+py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_a = NULL, *py_h1 = NULL, *py_h2 = NULL, *py_offs = NULL, *py_y = NULL;
+    Py_ssize_t nc;
+    int k;
+    Py_ssize_t len_t;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"a", "h1", "h2", "offset", "nc", "y", "k", "len_t", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin", const_cast<char **>(kwlist),
+                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_a, 2, NPY_DOUBLE) &&
+          check_array(py_h1, 2, NPY_DOUBLE) &&
+          check_array(py_h2, 2, NPY_DOUBLE) &&
+          check_array(py_offs, 1, NPY_INT64) &&
+          check_array(py_y, 2, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_a = (PyArrayObject *)py_a;
+    PyArrayObject *a_h1 = (PyArrayObject *)py_h1;
+    PyArrayObject *a_h2 = (PyArrayObject *)py_h2;
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_offs = (PyArrayObject *)py_offs;
+
+    npy_intp dims1[2] = {len_t - k - 1, k + 1};
+    PyArrayObject *a_A1 = (PyArrayObject*)PyArray_EMPTY(2, dims1, NPY_DOUBLE, 0);
+    npy_intp dims2[2] = {len_t - 2*k - 1, k};
+    PyArrayObject *a_A2 = (PyArrayObject*)PyArray_EMPTY(2, dims2, NPY_DOUBLE, 0);
+    npy_intp dims3[1] = {len_t - k - 1};
+    PyArrayObject *a_Z = (PyArrayObject*)PyArray_EMPTY(1, dims3, NPY_DOUBLE, 0);
+
+    if ((a_A1 == NULL) || (a_A2 == NULL) || (a_Z == NULL)) {
+        PyErr_NoMemory();
+        Py_XDECREF(a_A1);
+        Py_XDECREF(a_A2);
+        Py_XDECREF(a_Z);
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::qr_reduce_periodic(
+            // a(m, nz), packed
+            static_cast<double *>(PyArray_DATA(a_a)),
+            // h1(m, nz), h2(m, nz) packed
+            static_cast<double *>(PyArray_DATA(a_h1)), static_cast<double *>(PyArray_DATA(a_h2)),
+            PyArray_DIM(a_a, 0), PyArray_DIM(a_a, 1),
+            // offset(m)
+            static_cast<int64_t *>(PyArray_DATA(a_offs)),
+            // if a were dense, it would have been a(m, nc)
+            nc,
+            // y(m, ydim2)
+            static_cast<double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
+            k, len_t,
+            static_cast<double *>(PyArray_DATA(a_A1)), static_cast<double *>(PyArray_DATA(a_A2)),
+            static_cast<double *>(PyArray_DATA(a_Z))
+        );
+
+        return Py_BuildValue("(NNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z));
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
 
 /*
  * def _data_matrix(const double[::1] x,
@@ -1065,6 +1146,8 @@ static PyMethodDef DierckxMethods[] = {
      "backsubstitution, triangular matrix"},
     {"qr_reduce", (PyCFunction)py_qr_reduce, METH_VARARGS | METH_KEYWORDS,
      "row-by-row QR triangularization"},
+    {"qr_reduce_periodic", (PyCFunction)py_qr_reduce_periodic, METH_VARARGS | METH_KEYWORDS,
+    "row-by-row QR triangularization for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,
      "(m, k+1) array of non-zero b-splines"},
     /* BSpline helpers */
