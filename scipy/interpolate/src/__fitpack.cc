@@ -336,6 +336,173 @@ qr_reduce(double *aptr, const int64_t m, const int64_t nz, // a(m, nz), packed
     } // for(i = ...
 }
 
+/*
+    Solve the LSQ problem ||y - A@c||^2 via QR factorization
+    for periodic splines.
+*/
+void
+qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1(m, nz), h2(m, nz) packed
+          const int64_t m, const int64_t nz,
+          int64_t *offset,                                 // offset(m)
+          const int64_t nc,                                // dense would be a(m, nc)
+          double *yptr, const int64_t ydim1,               // y(m, ydim2)
+          const int k, const int64_t len_t,
+          double *a1ptr,                                   // A1(len_t - k - 1, k + 1)
+          double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
+          double *zptr                                     // z(len_t - k - 1)
+) {
+    auto H = RealArray2D(aptr, m, nz);
+    auto H1 = RealArray2D(h1ptr, m, nz);
+    auto H2 = RealArray2D(h2ptr, m, nz - 1);
+    auto A1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
+    auto A2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);
+    auto z = RealArray1D(zptr, len_t - k - 1);
+    auto y = RealArray2D(yptr, m + 1, ydim1);
+
+    for( int64_t i = 0; i < len_t - k - 1; i++ ) {
+        z(i) = 0.0;
+        for( int64_t j = 0; j < k + 1; j++ ) {
+            A1(i, j) = 0.0;
+        }
+    }
+
+    int64_t jper = 0;
+    for( int64_t it = 0; it < m; it++ ) {
+        int64_t ind = offset[it] + k;
+        int64_t l = ind + 1;
+        int64_t l5 = l - k - 1;
+        int64_t nk1 = len_t - k - 1;
+        int64_t n7 = nk1 - k;
+        int64_t n10 = n7 - k;
+        int64_t ij;
+        if (l5 >= n10) {
+
+            if (jper == 0) {
+                for( int64_t i = 0; i < n7; i++ ) {
+                    for( int64_t j = 0; j < k; j++ ) {
+                        A2(i, j) = 0;
+                    }
+                }
+
+                int64_t jk = n10 + 1;
+                for( int64_t i = 0; i < k; i++ ) {
+                    int64_t ik = jk;
+                    for( int64_t j = 0; j < k + 1; j++ ) {
+                        if( ik <= 0 ) break;
+                        A2(ik - 1, i) = A1(ik - 1, j);
+                        ik = ik - 1;
+                    }
+                    jk = jk + 1;
+                }
+                jper = 1;
+            }
+
+            // rotate the new row of the observation matrix into triangle
+            // by givens transformations.
+            if (n10 > 0) {
+                // rotation with the rows 1,2,...n10 of matrix a.
+                for( int64_t j = 0; j < n10; j++ ) {
+                    double piv = H1(it, 0);
+                    if( piv == 0.0 ) {
+                        for( int64_t h1i = 0; h1i < k; h1i++ ) {
+                            H1(it, h1i) = H1(it, h1i + 1);
+                        }
+                        H1(it, k) = 0.0;
+                    } else {
+
+                        // calculate the parameters of the givens transformation.
+                        double c, s, r;
+                        DLARTG(&A1(j, 0), &piv, &c, &s, &r);
+                        A1(j, 0) = r;
+
+                        // transformation to the right hand side.
+                        double yi = y(it, 0);
+                        std::tie(z(j), yi) = fprota(c, s, z(j), yi);
+                        // transformations to the left hand side with respect to a2.
+                        for( int64_t h2i = 0; h2i < k; h2i++ ) {
+                            std::tie(A2(j, h2i), H2(it, h2i)) = fprota(c, s, A2(j, h2i), H2(it, h2i));
+                        }
+
+                        if( j == n10 - 1 ) {
+                            break;
+                        }
+                        int64_t i2 = std::min(n10 - j, (int64_t) k) + 1;
+
+                        // transformations to the left hand side with respect to a1.
+                        for( int64_t h1i = 1; h1i < i2; h1i++ ) {
+                            std::tie(A1(j, h1i), H1(it, h1i)) = fprota(c, s, A1(j, h1i), H1(it, h1i));
+                        }
+
+                        for( int64_t h1i = 0; h1i < i2 - 1; h1i++ ) {
+                            H1(it, h1i) = H1(it, h1i + 1);
+                        }
+                        H1(it, i2 - 1) = 0.0;
+
+                    }
+                }
+            }
+
+            // rotation with the rows n10+1,...n7 of matrix a.
+            for( int64_t j = 0; j < k; j++ ) {
+                ij  = n10 + j;
+                double piv = H2(it, j);
+                if (ij <= -1 || piv == 0.0) {
+                    continue;
+                }
+
+                // calculate the parameters of the givens transformation.
+                double c, s, r;
+                DLARTG(&A2(ij, j), &piv, &c, &s, &r);
+                A2(ij, j) = r;
+                // transformations to right hand side.
+                double yi = y(it, 0);
+                std::tie(z(ij), y(it, 0)) = fprota(c, s, z(ij), y(it, 0));
+
+                if( j == k - 1 ) {
+                    break;
+                }
+
+                // transformations to left hand side.
+                for( int64_t h2i = j + 1; h2i < k; h2i++ ) {
+                    std::tie(A2(ij, h2i), H2(it, h2i)) = fprota(c, s, A2(ij, h2i), H2(it, h2i));
+                }
+
+            }
+
+        } else {
+
+            // rotation of the new row of the observation matrix into triangle in case the b-splines
+            // nj,k+1(x),j=n7+1,...n-k-1 are all zero at xi.
+            int64_t j = l5;
+            for( int64_t i = 0; i < k + 1; i++ ) {
+                j = j + 1;
+                double piv = H(it, i);
+                if( piv == 0.0 ) {
+                    continue;
+                }
+
+                double c, s, r;
+                DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
+                A1(j - 1, 0) = r;
+
+                double yi = y(it, 0);
+                std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+
+                if( i == k) {
+                    break;
+                }
+                int64_t i2 = 1;
+                int64_t i3 = i + 1;
+
+                for( int64_t i1 = i3; i1 < k + 1; i1++ ) {
+                    i2 = i2 + 1;
+                    std::tie(A1(j, i2 - 1), H(it, i1)) = fprota(c, s, A1(j, i2 - 1), H(it, i1));
+                }
+            }
+        }
+    }
+}
+
 
 /*
  * Back substitution solve of `R @ c = y` with an upper triangular R.
