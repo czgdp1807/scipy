@@ -249,7 +249,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         nmax = m + k + 1  # the number of knots for the spline interpolation
     else:
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
-        nmax = m + k + 1  # the number of knots for the spline interpolation
+        nmax = m + 2*k  # the number of knots for the spline interpolation
 
     # start from no internal knots
     if not periodic:
@@ -257,6 +257,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
     else:
         t = np.zeros(2*k + 3, dtype=float)
         t[k + 1] = x[(m + 1)//2 - 1]
+        nplus = 1
     n = t.shape[0]
     fp = 0.0
     fpold = 0.0
