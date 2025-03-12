@@ -416,8 +416,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                         A1(j, 0) = r;
 
                         // transformation to the right hand side.
-                        double yi = y(it, 0);
-                        std::tie(z(j), yi) = fprota(c, s, z(j), yi);
+                        std::tie(z(j), y(it, 0)) = fprota(c, s, z(j), y(it, 0));
                         // transformations to the left hand side with respect to a2.
                         for( int64_t h2i = 0; h2i < k; h2i++ ) {
                             std::tie(A2(j, h2i), H2(it, h2i)) = fprota(c, s, A2(j, h2i), H2(it, h2i));
@@ -455,7 +454,6 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 DLARTG(&A2(ij, j), &piv, &c, &s, &r);
                 A2(ij, j) = r;
                 // transformations to right hand side.
-                double yi = y(it, 0);
                 std::tie(z(ij), y(it, 0)) = fprota(c, s, z(ij), y(it, 0));
 
                 if( j == k - 1 ) {
@@ -485,8 +483,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
                 A1(j - 1, 0) = r;
 
-                double yi = y(it, 0);
-                std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+                std::tie(z(j - 1), y(it, 0)) = fprota(c, s, z(j - 1), y(it, 0));
 
                 if( i == k) {
                     break;
