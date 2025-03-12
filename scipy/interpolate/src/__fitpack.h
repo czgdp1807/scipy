@@ -201,6 +201,16 @@ fpback( /* inputs*/
        double *cptr                                 // c(nc, ydim2)
 );
 
+void
+fpbacp( /* inputs*/
+       const double *A1ptr,
+       const double *A2ptr,
+       const double *Zptr,
+       int k, int64_t len_t,
+       /* output */
+       double *cptr
+);
+
 
 /*
  * A helper for _fpknot:
