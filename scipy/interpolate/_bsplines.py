@@ -1873,7 +1873,8 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False):
         return A, y_w, c
     else:
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
-        # A1, A2 = _dierckx.qr_reduce_periodic(R, H1, H2, offset, nc, y_w)         # modifies arguments in-place
+        assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
+        A1, A2, Z = _dierckx.qr_reduce_periodic(R, H1, H2, offset, nc, y_w, k, len(t))         # modifies arguments in-place
         # c = _dierckx.fpbacp(A1, A2, nc, y_w)
         # return A1, A2, y_w, c
         _dierckx.qr_reduce(R, offset, nc, y_w)         # modifies arguments in-place
