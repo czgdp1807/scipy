@@ -149,6 +149,89 @@ py_fpback(PyObject* self, PyObject *args)
     return (PyObject *)a_c;
 }
 
+/*
+ * def _fpbacp(const double[:, ::1] A1, const double[:, ::1] A2, const double[:, ::1] Z,
+ *             const int k, const int64_t len_t
+ */
+static PyObject*
+py_fpbacp(PyObject* self, PyObject *args)
+{
+    PyObject *py_A1 = NULL, *py_A2 = NULL, *py_Z = NULL;
+    int k;
+    Py_ssize_t len_t;
+
+    if(!PyArg_ParseTuple(args, "OOOin", &py_A1, &py_A2, &py_Z, &k, &len_t)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_A1, 2, NPY_DOUBLE) &&
+          check_array(py_A2, 2, NPY_DOUBLE) &&
+          check_array(py_Z, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_A1 = (PyArrayObject *)py_A1;
+    PyArrayObject *a_A2 = (PyArrayObject *)py_A2;
+    PyArrayObject *a_Z = (PyArrayObject *)py_Z;
+
+    // check consistency of array sizes
+    Py_ssize_t A1_dim1 = PyArray_DIM(a_A1, 0);
+    Py_ssize_t A1_dim2 = PyArray_DIM(a_A1, 1);
+    Py_ssize_t A2_dim1 = PyArray_DIM(a_A2, 0);
+    Py_ssize_t A2_dim2 = PyArray_DIM(a_A2, 1);
+    Py_ssize_t Z_dim = PyArray_DIM(a_Z, 0);
+
+    int64_t nc = len_t - k - 1;
+
+    if (A1_dim1 != nc || A1_dim2 != k + 1) {
+        std::string msg = ("A1.shape = (" +
+            std::to_string(A1_dim1) + ", " + std::to_string(A1_dim2) + ") != (" +
+            std::to_string(nc) + ", " + std::to_string((k + 1)) + ")");
+        PyErr_SetString(PyExc_ValueError, msg.c_str());
+        return NULL;
+    }
+
+    if (A2_dim1 != nc - k || A2_dim2 != k) {
+        std::string msg = ("A2.shape = (" +
+            std::to_string(A2_dim1) + ", " + std::to_string(A2_dim2) + ") != (" +
+            std::to_string((nc - k)) + ", " + std::to_string(k) + ")");
+        PyErr_SetString(PyExc_ValueError, msg.c_str());
+        return NULL;
+    }
+
+    if (Z_dim != nc) {
+        std::string msg = ("Z.shape = (" +
+            std::to_string(Z_dim) + ",) != (" + std::to_string(nc) + ",)");
+        PyErr_SetString(PyExc_ValueError, msg.c_str());
+        return NULL;
+    }
+
+    // allocate the output buffer
+    npy_intp dims[2] = {nc, 1};
+    PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+    if (a_c == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here
+        fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)),
+                        static_cast<const double *>(PyArray_DATA(a_A2)),
+                        static_cast<const double *>(PyArray_DATA(a_Z)),
+                        k, len_t,
+                        static_cast<double *>(PyArray_DATA(a_c))
+        );
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+
+    return (PyObject *)a_c;
+}
+
 
 /*
  * def _qr_reduce(double[:, ::1] a, ssize_t[::1] offset, ssize_t nc,   # A packed
@@ -1145,6 +1228,8 @@ static PyMethodDef DierckxMethods[] = {
      "fpknot replacement"},
     {"fpback", py_fpback, METH_VARARGS,
      "backsubstitution, triangular matrix"},
+    {"fpbacp", py_fpbacp, METH_VARARGS,
+     "backsubstitution for periodic splines, triangular matrix"},
     {"qr_reduce", (PyCFunction)py_qr_reduce, METH_VARARGS | METH_KEYWORDS,
      "row-by-row QR triangularization"},
     {"qr_reduce_periodic", (PyCFunction)py_qr_reduce_periodic, METH_VARARGS | METH_KEYWORDS,
