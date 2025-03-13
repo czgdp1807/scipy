@@ -289,7 +289,7 @@ py_qr_reduce(PyObject* self, PyObject *args, PyObject *kwargs)
 /*
  * def _qr_reduce_periodic(double[:, ::1] a, double[:, ::1] a1, double[:, ::1] a2,     # A packed
                            ssize_t[::1] offset, ssize_t nc, double[:, ::1] y,
- *                         int k, int64_t len_t
+ *                         int k, int64_t len_t, bint init_p=False
  * ):
  */
 static PyObject*
@@ -299,12 +299,15 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
     Py_ssize_t nc;
     int k;
     Py_ssize_t len_t;
+    int init_p = false; // Default
+    double p = 0.0;
 
     // XXX: if the overhead is large, flip back to positional only arguments
-    const char *kwlist[] = {"a", "h1", "h2", "offset", "nc", "y", "k", "len_t", NULL};
+    const char *kwlist[] = {"a", "h1", "h2", "offset", "nc", "y", "k", "len_t", "init_p", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin", const_cast<char **>(kwlist),
-                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t)) {
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin|p", const_cast<char **>(kwlist),
+                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t,
+                                    &init_p)) {
         return NULL;
     }
 
@@ -353,10 +356,15 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
             static_cast<double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
             k, len_t,
             static_cast<double *>(PyArray_DATA(a_A1)), static_cast<double *>(PyArray_DATA(a_A2)),
-            static_cast<double *>(PyArray_DATA(a_Z))
+            static_cast<double *>(PyArray_DATA(a_Z)),
+            init_p, p
         );
 
-        return Py_BuildValue("(NNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z));
+        if( init_p ) {
+            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z), PyFloat_FromDouble(p));
+        } else {
+            return Py_BuildValue("(NNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z));
+        }
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
