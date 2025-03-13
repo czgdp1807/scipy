@@ -480,6 +480,53 @@ py_data_matrix(PyObject *self, PyObject *args)
     }
 }
 
+/*
+ * def _get_residual_p0(const double[::1] y,
+ *                      const double[::1] w):
+ */
+static PyObject*
+py_get_residual_p0(PyObject *self, PyObject *args)
+{
+    PyObject *py_y = NULL, *py_w = NULL;
+
+    if(!PyArg_ParseTuple(args, "OO", &py_y, &py_w)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_y, 2, NPY_DOUBLE) &&
+          check_array(py_w, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_w = (PyArrayObject *)py_w;
+
+    // sanity check sizes
+    if (PyArray_DIM(a_w, 0) != PyArray_DIM(a_y, 0)) {
+        std::string msg = ("len(w) = " + std::to_string(PyArray_DIM(a_w, 0)) + " != " +
+                           "len(y) = " + std::to_string(PyArray_DIM(a_y, 0)));
+        PyErr_SetString(PyExc_ValueError, msg.c_str());
+        return NULL;
+    }
+
+    // allocate temp and output arrays
+    npy_intp m = PyArray_DIM(a_y, 0);
+
+    try {
+        // heavy lifting happens here
+        double fp0 = fitpack::get_residual_p0(
+            static_cast<const double *>(PyArray_DATA(a_y)),
+            static_cast<const double *>(PyArray_DATA(a_w)),
+            m);
+
+        return PyFloat_FromDouble(fp0);
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+}
+
 
 static char doc_coloc[] =
     "Build the B-spline colocation matrix. \n"
@@ -1218,13 +1265,8 @@ py_coloc_nd(PyObject *self, PyObject *args)
 /////////////////////////////////////
 
 static PyMethodDef DierckxMethods[] = {
-<<<<<<< HEAD
-    /* FITPACK replacement helpers*/
-    {"fpknot", py_fpknot, METH_VARARGS, 
-=======
     //...
     {"fpknot", py_fpknot, METH_VARARGS,
->>>>>>> 453359c02 (MISC: Styling updates)
      "fpknot replacement"},
     {"fpback", py_fpback, METH_VARARGS,
      "backsubstitution, triangular matrix"},
@@ -1236,7 +1278,12 @@ static PyMethodDef DierckxMethods[] = {
     "row-by-row QR triangularization for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,
      "(m, k+1) array of non-zero b-splines"},
-    /* BSpline helpers */
+    {"get_residual_p0", py_get_residual_p0, METH_VARARGS,
+     "Computes residual for periodic splines with p=0"},
+    {"_coloc", py_coloc, METH_VARARGS,
+      doc_coloc},
+    {"_norm_eq_lsq", py_norm_eq_lsq, METH_VARARGS,
+     doc_norm_eq_lsq},
     {"evaluate_spline", py_evaluate_spline, METH_VARARGS,
      doc_evaluate_spline},
     {"evaluate_all_bspl", py_evaluate_all_bspl, METH_VARARGS,

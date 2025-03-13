@@ -709,9 +709,15 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     fpinf = fp - s
 
     # f(p=0): LSQ spline without internal knots
-    residuals = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
-    fp0 = residuals.sum()
-    fp0 = fp0 - s
+    if not periodic:
+        residuals = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
+        fp0 = residuals.sum()
+        fp0 = fp0 - s
+    else:
+        # Hanldes only y.shape[1] == 1
+        assert(y.shape[1] == 1)
+        fp0 = _dierckx.get_residual_p0(y, w)
+        fp0 = fp0 - s
 
     # solve
     bracket = (0, fp0), (np.inf, fpinf)

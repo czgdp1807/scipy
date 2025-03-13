@@ -892,7 +892,7 @@ norm_eq_lsq(const double *xptr, int64_t m,            // x, shape (m,)
 
 /* Evaluate an N-dim tensor product spline or its derivative */
 void
-_evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, shape(npts, ndim) 
+_evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, shape(npts, ndim)
                     const double *t_ptr, int64_t max_len_t,            // t, shape (ndim, max_len_t)
                     const int64_t *len_t_ptr,                          // len_t, shape (ndim,)
                     const int64_t *k_ptr,                              // k, shape (ndim,)
@@ -916,7 +916,7 @@ _evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, sh
     auto out = RealArray2D(out_ptr, npts, num_c_tr);
 
     // allocate work arrays (small, allocations unlikely to fail)
-    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim); 
+    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim);
     std::vector<double> wrk(2*max_k + 2);
     std::vector<int64_t> i(ndim);
 
@@ -1042,7 +1042,7 @@ _coloc_nd(/* inputs */
     auto csr_data = RealArray1D(csr_data_ptr, npts*volume);
 
     // allocate work arrays (small, allocations unlikely to fail)
-    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim); 
+    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim);
     std::vector<double> wrk(2*max_k + 2);
     std::vector<int64_t> i(ndim);
 
@@ -1100,7 +1100,7 @@ _coloc_nd(/* inputs */
                 idx_cflat += idx * strides_c1(d);
             }
 
-            /* 
+            /*
              *  Fill the row of the colocation matrix in the CSR format.
              * If it were dense, it would have been just
              * >>> matr[j, idx_cflat] = factor
@@ -1116,5 +1116,28 @@ _coloc_nd(/* inputs */
     return 0;
 }
 
+
+double
+get_residual_p0(/* inputs */
+            const double *yptr,      // y, shape (m, 1)
+            const double *wptr,      // w, shape (m,)
+            int64_t m
+) {
+    auto y = ConstRealArray2D(yptr, m, 1);
+    auto w = ConstRealArray1D(wptr, m);
+
+    double fp0 = 0.0, d1 = 0.0, c1 = 0.0;
+    for( int64_t it = 0; it < m - 1; it++ ) {
+        double wi = w(it);
+        double yi = y(it, 0) * wi;
+        double c, s, r;
+        DLARTG(&d1, &wi, &c, &s, &r);
+        d1 = r;
+        std::tie(c1, yi) = fprota(c, s, c1, yi);
+        fp0 = fp0 + yi*yi;
+    }
+
+    return fp0;
+}
 
 } // namespace fitpack
