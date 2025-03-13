@@ -349,7 +349,9 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
           const int k, const int64_t len_t,
           double *a1ptr,                                   // A1(len_t - k - 1, k + 1)
           double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
-          double *zptr                                     // z(len_t - k - 1)
+          double *zptr,                                    // z(len_t - k - 1),
+          bool init_p,
+          double& p
 ) {
     auto H = RealArray2D(aptr, m, nz);
     auto H1 = RealArray2D(h1ptr, m, nz);
@@ -367,13 +369,13 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
     }
 
     int64_t jper = 0;
+    int64_t nk1 = len_t - k - 1;
+    int64_t n7 = nk1 - k;
+    int64_t n10 = n7 - k;
     for( int64_t it = 0; it < m; it++ ) {
         int64_t ind = offset[it] + k;
         int64_t l = ind + 1;
         int64_t l5 = l - k - 1;
-        int64_t nk1 = len_t - k - 1;
-        int64_t n7 = nk1 - k;
-        int64_t n10 = n7 - k;
         int64_t ij;
         if (l5 >= n10) {
 
@@ -497,6 +499,26 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 }
             }
         }
+    }
+
+    if( init_p ) {
+        p = 0.0;
+        int64_t l = n7;
+        for( int64_t i = 1; i <= k; i++ ) {
+            int64_t j = k + 1 - i;
+            p = p + A2(l - 1, j - 1);
+            l = l - 1;
+            if( l == 0 ) {
+                break;
+            }
+        }
+
+        if( l != 0 ) {
+            for( int64_t i = 0; i < n10; i++ ) {
+                p = p + A1(i, 0);
+            }
+        }
+        p = n7/p;
     }
 }
 
