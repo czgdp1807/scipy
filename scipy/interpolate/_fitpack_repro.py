@@ -697,9 +697,15 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
 
     # c  initial value for p.
     # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L253
-    R, Y, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
+    solve_for_p = False
+    if periodic:
+        solve_for_p = True
+    R, Y, _, p = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, solve_for_p=solve_for_p)
     nc = t.shape[0] -k -1
-    p = nc / R[:, 0].sum()
+    if not periodic:
+        p = nc / R[:, 0].sum()
+    else:
+        R, A1, A2, Z = R
 
     # ### bespoke solver ####
     # initial conditions
