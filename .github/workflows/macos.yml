@@ -32,7 +32,7 @@ jobs:
     # the usual skipping should not be enforced
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: macos-latest
     strategy:
       matrix:
@@ -138,7 +138,7 @@ jobs:
     # the usual skipping should not be enforced
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: macos-14
     strategy:
       matrix:
@@ -184,7 +184,7 @@ jobs:
     # the usual skipping should not be enforced
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: macos-15
     strategy:
       matrix:

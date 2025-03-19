@@ -36,7 +36,7 @@ jobs:
     #        (b) it does run with Act locally (`github` doesn't exist there)
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: windows-2022
     defaults:
       run:
@@ -101,7 +101,7 @@ jobs:
 
       # "import scipy; scipy.test();" fails because
       # scipy/sparse/linalg/_eigen/arpack crashes.
-      # Reference - https://github.com/scipy/scipy/issues/20728
+      # Reference - https://github.com/czgdp1807/scipy/issues/20728
       - name: Test scipy.datasets
         shell: cmd /C call {0}
         run: |
