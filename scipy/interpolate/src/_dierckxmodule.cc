@@ -375,6 +375,77 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
 }
 
 
+/*
+ * def _init_agumented_matrices(double[:, ::1] a1, double[:, ::1] a2,     # A packed
+                                ssize_t[::1] b, int64_t len_t, int k
+ * ):
+ */
+static PyObject*
+py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_a1 = NULL, *py_a2 = NULL, *py_b = NULL;
+    int k;
+    Py_ssize_t len_t;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"a1", "a2", "b", "k", "len_t", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOin", const_cast<char **>(kwlist),
+                                    &py_a1, &py_a2, &py_b, &k, &len_t)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_a1, 2, NPY_DOUBLE) &&
+          check_array(py_a2, 2, NPY_DOUBLE) &&
+          check_array(py_b, 2, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_a1 = (PyArrayObject *)py_a1;
+    PyArrayObject *a_a2 = (PyArrayObject *)py_a2;
+    PyArrayObject *a_b = (PyArrayObject *)py_b;
+
+    npy_intp dims1[2] = {len_t - 2*k - 1, k + 2};
+    PyArrayObject *a_G1 = (PyArrayObject*)PyArray_EMPTY(2, dims1, NPY_DOUBLE, 0);
+    npy_intp dims2[2] = {len_t - 2*k - 1, k + 1};
+    PyArrayObject *a_G2 = (PyArrayObject*)PyArray_EMPTY(2, dims2, NPY_DOUBLE, 0);
+    npy_intp dims3[2] = {len_t - 2*k - 2, k + 2};
+    PyArrayObject *a_H1 = (PyArrayObject*)PyArray_EMPTY(2, dims3, NPY_DOUBLE, 0);
+    npy_intp dims4[2] = {len_t - 2*k - 2, k + 1};
+    PyArrayObject *a_H2 = (PyArrayObject*)PyArray_EMPTY(2, dims4, NPY_DOUBLE, 0);
+
+    if ((a_G1 == NULL) || (a_G2 == NULL) || (a_H1 == NULL) || (a_H2 == NULL)) {
+        PyErr_NoMemory();
+        Py_XDECREF(a_G1);
+        Py_XDECREF(a_G2);
+        Py_XDECREF(a_H1);
+        Py_XDECREF(a_H2);
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::init_agumented_matrices(
+            static_cast<double *>(PyArray_DATA(a_a1)),
+            static_cast<double *>(PyArray_DATA(a_a2)),
+            static_cast<double *>(PyArray_DATA(a_b)),
+            k, len_t,
+            static_cast<double *>(PyArray_DATA(a_G1)),
+            static_cast<double *>(PyArray_DATA(a_G2)),
+            static_cast<double *>(PyArray_DATA(a_H1)),
+            static_cast<double *>(PyArray_DATA(a_H2))
+        );
+
+        return Py_BuildValue("(NNNN)", PyArray_Return(a_G1), PyArray_Return(a_G2), PyArray_Return(a_H1), PyArray_Return(a_H2));
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 
 /*
  * def _data_matrix(const double[::1] x,
@@ -1283,6 +1354,8 @@ static PyMethodDef DierckxMethods[] = {
      "row-by-row QR triangularization"},
     {"qr_reduce_periodic", (PyCFunction)py_qr_reduce_periodic, METH_VARARGS | METH_KEYWORDS,
     "row-by-row QR triangularization for periodic splines"},
+    {"init_agumented_matrices", (PyCFunction)py_init_agumented_matrices, METH_VARARGS | METH_KEYWORDS,
+    "Initialise augmented matrices for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,
      "(m, k+1) array of non-zero b-splines"},
     {"get_residual_p0", py_get_residual_p0, METH_VARARGS,
