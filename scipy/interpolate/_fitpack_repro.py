@@ -530,6 +530,44 @@ class F:
 
         return fp - self.s
 
+class Fperiodic:
+    def __init__(self, x, y, t, k, s, w=None, *, R=None, Y=None, A1=None, A2=None, Z=None):
+        self.x = x
+        self.y = y
+        self.t = t
+        self.k = k
+        w = np.ones_like(x, dtype=float) if w is None else w
+        if w.ndim != 1:
+            raise ValueError(f"{w.ndim = } != 1.")
+        self.w = w
+        self.s = s
+
+        if y.ndim != 2:
+            raise ValueError(f"F: expected y.ndim == 2, got {y.ndim = } instead.")
+
+        # ### precompute what we can ###
+
+        # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L250
+        # c  evaluate the discontinuity jump of the kth derivative of the
+        # c  b-splines at the knots t(l),l=k+2,...n-k-1 and store in b.
+        b, b_offset, b_nc = disc(t, k)
+
+        # the QR factorization of the data matrix, if not provided
+        # NB: otherwise, must be consistent with x,y & s, but this is not checked
+        if ((A1 is None or A2 is None or Z is None) or
+            (R is None and Y is None)):
+            (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
+                x, y, t, k, w, periodic=True, solve_for_p=True)
+
+        G1, G2, H1, H2 = _dierckx.init_agumented_matrices(A1, A2, b, len(t), k)
+
+        self.G1 = G1
+        self.G2 = G2
+        self.H1 = H1
+        self.H2 = H2
+
+    # TODO: Implement __call__
+
 
 def fprati(p1, f1, p2, f2, p3, f3):
     """The root of r(p) = (u*p + v) / (p + w) given three points and values,
@@ -727,7 +765,10 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
 
     # solve
     bracket = (0, fp0), (np.inf, fpinf)
-    f = F(x, y, t, k=k, s=s, w=w, R=R, Y=Y)
+    if not periodic:
+        f = F(x, y, t, k=k, s=s, w=w, R=R, Y=Y)
+    else:
+        f = Fperiodic(x, y, t, k=k, s=s, w=w, R=R, Y=Y, A1=A1, A2=A2, Z=Z)
     _ = root_rati(f, p, bracket, acc)
 
     # solve ALTERNATIVE: is roughly equivalent, gives slightly different results
@@ -742,7 +783,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     return f.spl
 
 
-def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=True):
+def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
     r"""Create a smoothing B-spline function with bounded error, minimizing derivative jumps.
 
     Given the set of data points ``(x[i], y[i])``, determine a smooth spline

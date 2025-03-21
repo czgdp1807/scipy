@@ -1162,4 +1162,90 @@ get_residual_p0(/* inputs */
     return fp0;
 }
 
+void init_agumented_matrices(
+    double *a1ptr, double *a2ptr, double *bptr,
+    int k, int64_t len_t,
+    double *g1ptr, double *g2ptr,
+    double *h1ptr, double *h2ptr) {
+    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
+    auto g2 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 1);
+    auto a1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
+    auto a2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);
+    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
+    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
+    auto b = RealArray2D(bptr, len_t - 2*k - 2, k + 2);
+
+    int64_t l0, l, l1;
+
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        for( int64_t j = 0; j < k + 1; j++ ) {
+            g1(i, j) = a1(i, j);
+        }
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        g1(i, k + 1) = 0.0;
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        g2(i, 0) = 0.0;
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        for( int64_t j = 1; j < k + 1; j++ ) {
+            g2(i, j) = a2(i, j - 1);
+        }
+    }
+
+    l = len_t - 3*k - 1;
+    for( int64_t j = 0; j < k + 1; j++ ) {
+        if( l <= 0 ) {
+            break;
+        }
+        g2(l - 1, 0) = a1(l - 1, j);
+        l = l - 1;
+    }
+
+    for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
+
+        // fetch a new row of matrix b and store it in the arrays h1 (the part
+        // with respect to g1) and h2 (the part with respect to g2).
+        for( int64_t i = 0; i < k + 1; i++ ) {
+            h1(it - 1, i) = 0;
+            h2(it - 1, i) = 0;
+        }
+        h1(it - 1, k + 1) = 0;
+        if( it <= len_t - 3*k - 2 ) {
+            l = it;
+            l0 = it;
+            for( int64_t j = 1; j <= k + 2; j++ ) {
+                if( l0 == len_t - 3*k - 2 ) {
+                    l0 = 1;
+                    for( int64_t l1 = j; l1 <= k + 2; l1++ ) {
+                        h2(it - 1, l0 - 1) = b(it - 1, l1 - 1);
+                        l0 = l0 + 1;
+                    }
+                    break;
+                }
+                h1(it - 1, j - 1) = b(it - 1, j - 1);
+                l0 = l0 + 1;
+            }
+        } else {
+            l = 1;
+            int64_t i = it - (len_t - 3*k - 1);
+            for( int64_t j = 1; j <= k + 2; j++ ) {
+                i = i + 1;
+                l0 = i;
+                l1 = l0 - (k + 1);
+                while( l1 > std::max((int64_t) 0, len_t - 3*k - 2) ) {
+                    l0 = l1 - (len_t - 3*k - 2);
+                    l1 = l0 - (k + 1);
+                }
+                if( l1 > 0 ) {
+                    h1(it - 1, l1 - 1) = b(it - 1, j - 1);
+                } else {
+                    h2(it - 1, l0 - 1) = h2(it - 1, l0 - 1) + b(it - 1, j - 1);
+                }
+            }
+        }
+    }
+}
+
 } // namespace fitpack
