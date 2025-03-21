@@ -197,6 +197,13 @@ qr_reduce_periodic(double *aptr, double *h1, double *h2,   // a(m, nz), h1(m, nz
           double &p
 );
 
+void init_agumented_matrices(
+    double *a1ptr, double *a2ptr, double *bptr,
+    int k, int64_t len_t,
+    double *g1ptr, double *g2ptr,
+    double *h1ptr, double *h2ptr
+);
+
 
 /*
  * Back substitution solve of `R @ c = y` with an upper triangular R.
