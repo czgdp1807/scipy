@@ -197,11 +197,18 @@ qr_reduce_periodic(double *aptr, double *h1, double *h2,   // a(m, nz), h1(m, nz
           double &p
 );
 
+void qr_reduce_augmented_matrices(
+    double* g1ptr, double* g2ptr,
+    double* h1ptr, double* h2ptr,
+    double* cptr, double* offsetptr,
+    int k, int64_t len_t);
+
 void init_agumented_matrices(
     double *a1ptr, double *a2ptr, double *bptr,
     int k, int64_t len_t,
     double *g1ptr, double *g2ptr,
-    double *h1ptr, double *h2ptr
+    double *h1ptr, double *h2ptr,
+    double *offsetptr
 );
 
 
@@ -220,9 +227,11 @@ fpback( /* inputs*/
 void
 fpbacp( /* inputs*/
        const double *A1ptr,
+       int64_t a1_rows,
        const double *A2ptr,
+       int64_t a2_rows,
        const double *Zptr,
-       int k, int64_t len_t,
+       int k, int kp, int64_t len_t,
        /* output */
        double *cptr
 );
