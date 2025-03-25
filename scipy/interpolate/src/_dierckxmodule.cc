@@ -156,10 +156,10 @@ static PyObject*
 py_fpbacp(PyObject* self, PyObject *args)
 {
     PyObject *py_A1 = NULL, *py_A2 = NULL, *py_Z = NULL;
-    int k;
+    int k, kp;
     Py_ssize_t len_t;
 
-    if(!PyArg_ParseTuple(args, "OOOin", &py_A1, &py_A2, &py_Z, &k, &len_t)) {
+    if(!PyArg_ParseTuple(args, "OOOiin", &py_A1, &py_A2, &py_Z, &k, &kp, &len_t)) {
         return NULL;
     }
 
@@ -182,28 +182,28 @@ py_fpbacp(PyObject* self, PyObject *args)
 
     int64_t nc = len_t - k - 1;
 
-    if (A1_dim1 != nc || A1_dim2 != k + 1) {
-        std::string msg = ("A1.shape = (" +
-            std::to_string(A1_dim1) + ", " + std::to_string(A1_dim2) + ") != (" +
-            std::to_string(nc) + ", " + std::to_string((k + 1)) + ")");
-        PyErr_SetString(PyExc_ValueError, msg.c_str());
-        return NULL;
-    }
+    // if (A1_dim1 != nc || A1_dim2 != k + 1) {
+    //     std::string msg = ("A1.shape = (" +
+    //         std::to_string(A1_dim1) + ", " + std::to_string(A1_dim2) + ") != (" +
+    //         std::to_string(nc) + ", " + std::to_string((k + 1)) + ")");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
 
-    if (A2_dim1 != nc - k || A2_dim2 != k) {
-        std::string msg = ("A2.shape = (" +
-            std::to_string(A2_dim1) + ", " + std::to_string(A2_dim2) + ") != (" +
-            std::to_string((nc - k)) + ", " + std::to_string(k) + ")");
-        PyErr_SetString(PyExc_ValueError, msg.c_str());
-        return NULL;
-    }
+    // if (A2_dim1 != nc - k || A2_dim2 != k) {
+    //     std::string msg = ("A2.shape = (" +
+    //         std::to_string(A2_dim1) + ", " + std::to_string(A2_dim2) + ") != (" +
+    //         std::to_string((nc - k)) + ", " + std::to_string(k) + ")");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
 
-    if (Z_dim != nc) {
-        std::string msg = ("Z.shape = (" +
-            std::to_string(Z_dim) + ",) != (" + std::to_string(nc) + ",)");
-        PyErr_SetString(PyExc_ValueError, msg.c_str());
-        return NULL;
-    }
+    // if (Z_dim != nc) {
+    //     std::string msg = ("Z.shape = (" +
+    //         std::to_string(Z_dim) + ",) != (" + std::to_string(nc) + ",)");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
 
     // allocate the output buffer
     npy_intp dims[2] = {nc, 1};
@@ -215,10 +215,10 @@ py_fpbacp(PyObject* self, PyObject *args)
 
     try {
         // heavy lifting happens here
-        fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)),
-                        static_cast<const double *>(PyArray_DATA(a_A2)),
+        fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)), A1_dim1,
+                        static_cast<const double *>(PyArray_DATA(a_A2)), A2_dim1,
                         static_cast<const double *>(PyArray_DATA(a_Z)),
-                        k, len_t,
+                        k, kp, len_t,
                         static_cast<double *>(PyArray_DATA(a_c))
         );
     }
@@ -376,6 +376,66 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
 
 
 /*
+ * def _qr_reduce_augmented_matrices(double[:, ::1] g1, double[:, ::1] g2,
+                                     double[:, ::1] h1, double [:, ::1] h2,
+                                     int64_t len_t, int k
+ * ):
+ */
+static PyObject*
+py_qr_reduce_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_g1 = NULL, *py_g2 = NULL, *py_h1 = NULL;
+    PyObject *py_h2 = NULL, *py_c = NULL, *py_offset = NULL;
+    int k;
+    Py_ssize_t len_t;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"g1", "g2", "h1", "h2", "c", "offset", "len_t", "k", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOOOni", const_cast<char **>(kwlist),
+                                    &py_g1, &py_g2, &py_h1, &py_h2, &py_c,
+                                    &py_offset, &len_t, &k)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_g1, 2, NPY_DOUBLE) &&
+          check_array(py_g2, 2, NPY_DOUBLE) &&
+          check_array(py_h1, 2, NPY_DOUBLE) &&
+          check_array(py_h2, 2, NPY_DOUBLE) &&
+          check_array(py_c, 2, NPY_DOUBLE) &&
+          check_array(py_offset, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_g1 = (PyArrayObject *)py_g1;
+    PyArrayObject *a_g2 = (PyArrayObject *)py_g2;
+    PyArrayObject *a_h1 = (PyArrayObject *)py_h1;
+    PyArrayObject *a_h2 = (PyArrayObject *)py_h2;
+    PyArrayObject *a_c = (PyArrayObject *)py_c;
+    PyArrayObject *a_offset = (PyArrayObject *)py_offset;
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::qr_reduce_augmented_matrices(
+            static_cast<double *>(PyArray_DATA(a_g1)),
+            static_cast<double *>(PyArray_DATA(a_g2)),
+            static_cast<double *>(PyArray_DATA(a_h1)),
+            static_cast<double *>(PyArray_DATA(a_h2)),
+            static_cast<double *>(PyArray_DATA(a_c)),
+            static_cast<double *>(PyArray_DATA(a_offset)),
+            k, len_t
+        );
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+/*
  * def _init_agumented_matrices(double[:, ::1] a1, double[:, ::1] a2,     # A packed
                                 ssize_t[::1] b, int64_t len_t, int k
  * ):
@@ -388,10 +448,10 @@ py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
     Py_ssize_t len_t;
 
     // XXX: if the overhead is large, flip back to positional only arguments
-    const char *kwlist[] = {"a1", "a2", "b", "k", "len_t", NULL};
+    const char *kwlist[] = {"a1", "a2", "b", "len_t", "k", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOin", const_cast<char **>(kwlist),
-                                    &py_a1, &py_a2, &py_b, &k, &len_t)) {
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOni", const_cast<char **>(kwlist),
+                                    &py_a1, &py_a2, &py_b, &len_t, &k)) {
         return NULL;
     }
 
@@ -413,13 +473,17 @@ py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
     PyArrayObject *a_H1 = (PyArrayObject*)PyArray_EMPTY(2, dims3, NPY_DOUBLE, 0);
     npy_intp dims4[2] = {len_t - 2*k - 2, k + 1};
     PyArrayObject *a_H2 = (PyArrayObject*)PyArray_EMPTY(2, dims4, NPY_DOUBLE, 0);
+    npy_intp dims5[1] = {len_t - 2*k - 2};
+    PyArrayObject *a_offset = (PyArrayObject*)PyArray_EMPTY(1, dims5, NPY_DOUBLE, 0);
 
-    if ((a_G1 == NULL) || (a_G2 == NULL) || (a_H1 == NULL) || (a_H2 == NULL)) {
+
+    if ((a_G1 == NULL) || (a_G2 == NULL) || (a_H1 == NULL) || (a_H2 == NULL) || (a_offset == NULL)) {
         PyErr_NoMemory();
         Py_XDECREF(a_G1);
         Py_XDECREF(a_G2);
         Py_XDECREF(a_H1);
         Py_XDECREF(a_H2);
+        Py_XDECREF(a_offset);
         return NULL;
     }
 
@@ -433,10 +497,12 @@ py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
             static_cast<double *>(PyArray_DATA(a_G1)),
             static_cast<double *>(PyArray_DATA(a_G2)),
             static_cast<double *>(PyArray_DATA(a_H1)),
-            static_cast<double *>(PyArray_DATA(a_H2))
+            static_cast<double *>(PyArray_DATA(a_H2)),
+            static_cast<double *>(PyArray_DATA(a_offset))
         );
 
-        return Py_BuildValue("(NNNN)", PyArray_Return(a_G1), PyArray_Return(a_G2), PyArray_Return(a_H1), PyArray_Return(a_H2));
+        return Py_BuildValue("(NNNNN)", PyArray_Return(a_G1), PyArray_Return(a_G2),
+            PyArray_Return(a_H1), PyArray_Return(a_H2), PyArray_Return(a_offset));
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
@@ -1353,7 +1419,9 @@ static PyMethodDef DierckxMethods[] = {
     {"qr_reduce", (PyCFunction)py_qr_reduce, METH_VARARGS | METH_KEYWORDS,
      "row-by-row QR triangularization"},
     {"qr_reduce_periodic", (PyCFunction)py_qr_reduce_periodic, METH_VARARGS | METH_KEYWORDS,
-    "row-by-row QR triangularization for periodic splines"},
+     "row-by-row QR triangularization for periodic splines"},
+    {"qr_reduce_augmented_matrices", (PyCFunction)py_qr_reduce_augmented_matrices, METH_VARARGS | METH_KEYWORDS,
+     "row-by-row QR triangularization of augmented matrices for periodic splines"},
     {"init_agumented_matrices", (PyCFunction)py_init_agumented_matrices, METH_VARARGS | METH_KEYWORDS,
     "Initialise augmented matrices for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,

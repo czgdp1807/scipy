@@ -559,14 +559,41 @@ class Fperiodic:
             (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
                 x, y, t, k, w, periodic=True, solve_for_p=True)
 
-        G1, G2, H1, H2 = _dierckx.init_agumented_matrices(A1, A2, b, len(t), k)
+        G1, G2, H1, H2, offset = _dierckx.init_agumented_matrices(A1, A2, b, len(t), k)
 
-        self.G1 = G1
-        self.G2 = G2
-        self.H1 = H1
-        self.H2 = H2
+        self.G1_ = G1
+        self.G2_ = G2
+        self.H1_ = H1
+        self.H2_ = H2
+        self.Z_ = Z
+        self.offset_ = offset
 
-    # TODO: Implement __call__
+    def __call__(self, p):
+        G1 = self.G1_.copy()
+        G2 = self.G2_.copy()
+        H1 = self.H1_.copy()
+        H2 = self.H2_.copy()
+        Z = self.Z_.copy()
+
+        pinv = 1/p
+        H1 = H1*pinv
+        H2 = H2*pinv
+
+        c = np.empty((len(self.t) - self.k - 1, 1), dtype=Z.dtype)
+        c[:len(self.t) - 2*self.k - 1, 0] = Z[:len(self.t) - 2*self.k - 1]
+
+        _dierckx.qr_reduce_augmented_matrices(
+            G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
+
+        c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]), self.k, self.k + 1, len(self.t))
+
+        spl = BSpline(self.t, c, self.k)
+        residuals = _compute_residuals(self.w[:-1]**2, spl(self.x[:-1]), self.y[:-1])
+        fp = residuals.sum()
+
+        self.spl = spl   # store it
+
+        return fp - self.s
 
 
 def fprati(p1, f1, p2, f2, p3, f3):
@@ -738,7 +765,9 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     solve_for_p = False
     if periodic:
         solve_for_p = True
-    R, Y, _, p = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, solve_for_p=solve_for_p)
+        R, Y, _, p = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, solve_for_p=solve_for_p)
+    else:
+        R, Y, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     nc = t.shape[0] -k -1
     if not periodic:
         p = nc / R[:, 0].sum()
