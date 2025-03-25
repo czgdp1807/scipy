@@ -1884,7 +1884,7 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
                 R, H1, H2, offset, nc, y_w, k,
                 len(t)
             )         # modifies arguments in-place
-        c = _dierckx.fpbacp(A1, A2, Z, k, len(t))
+        c = _dierckx.fpbacp(A1, A2, Z, k, k, len(t))
         if solve_for_p:
             return (R, A1, A2, Z), y_w, c, p
         return R, y_w, c

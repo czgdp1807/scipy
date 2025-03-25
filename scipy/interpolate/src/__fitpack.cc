@@ -195,6 +195,14 @@ data_matrix_periodic( /* inputs */
     auto H2 = RealArray2D(H2ptr, m, k);
     auto offset = Array1D<int64_t, false>(offset_ptr, m);
 
+    for( int64_t i = 0; i < m; i++ ) {
+        for( int64_t j = 0; j < k; j++ ) {
+            H1(i, j) = 0.0;
+            H2(i, j) = 0.0;
+        }
+        H1(i, k) = 0.0;
+    }
+
     int64_t ind = k;
     for (int i=0; i < m; ++i) {
         double xval = x(i);
@@ -361,10 +369,10 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
     auto z = RealArray1D(zptr, len_t - k - 1);
     auto y = RealArray2D(yptr, m + 1, ydim1);
 
-    for( int64_t i = 0; i < len_t - k - 1; i++ ) {
-        z(i) = 0.0;
-        for( int64_t j = 0; j < k + 1; j++ ) {
-            A1(i, j) = 0.0;
+    for( int64_t i = 1; i <= len_t - k - 1; i++ ) {
+        z(i - 1) = 0.0;
+        for( int64_t j = 1; j <= k + 1; j++ ) {
+            A1(i - 1, j - 1) = 0.0;
         }
     }
 
@@ -372,26 +380,27 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
     int64_t nk1 = len_t - k - 1;
     int64_t n7 = nk1 - k;
     int64_t n10 = n7 - k;
-    for( int64_t it = 0; it < m; it++ ) {
-        int64_t ind = offset[it] + k;
+    for( int64_t it = 1; it <= m; it++ ) {
+        double yi = y(it - 1, 0);
+        int64_t ind = offset[it - 1] + k;
         int64_t l = ind + 1;
         int64_t l5 = l - k - 1;
         int64_t ij;
         if (l5 >= n10) {
 
             if (jper == 0) {
-                for( int64_t i = 0; i < n7; i++ ) {
-                    for( int64_t j = 0; j < k; j++ ) {
-                        A2(i, j) = 0;
+                for( int64_t i = 1; i <= n7; i++ ) {
+                    for( int64_t j = 1; j <= k; j++ ) {
+                        A2(i - 1, j - 1) = 0;
                     }
                 }
 
                 int64_t jk = n10 + 1;
-                for( int64_t i = 0; i < k; i++ ) {
+                for( int64_t i = 1; i <= k; i++ ) {
                     int64_t ik = jk;
-                    for( int64_t j = 0; j < k + 1; j++ ) {
+                    for( int64_t j = 1; j <= k + 1; j++ ) {
                         if( ik <= 0 ) break;
-                        A2(ik - 1, i) = A1(ik - 1, j);
+                        A2(ik - 1, i - 1) = A1(ik - 1, j - 1);
                         ik = ik - 1;
                     }
                     jk = jk + 1;
@@ -403,68 +412,69 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
             // by givens transformations.
             if (n10 > 0) {
                 // rotation with the rows 1,2,...n10 of matrix a.
-                for( int64_t j = 0; j < n10; j++ ) {
-                    double piv = H1(it, 0);
+                for( int64_t j = 1; j <= n10; j++ ) {
+                    double piv = H1(it - 1, 0);
                     if( piv == 0.0 ) {
-                        for( int64_t h1i = 0; h1i < k; h1i++ ) {
-                            H1(it, h1i) = H1(it, h1i + 1);
+                        for( int64_t h1i = 1; h1i <= k; h1i++ ) {
+                            H1(it - 1, h1i - 1) = H1(it - 1, h1i);
                         }
-                        H1(it, k) = 0.0;
+                        H1(it - 1, k) = 0.0;
                     } else {
 
                         // calculate the parameters of the givens transformation.
                         double c, s, r;
-                        DLARTG(&A1(j, 0), &piv, &c, &s, &r);
-                        A1(j, 0) = r;
+                        DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
+                        A1(j - 1, 0) = r;
 
                         // transformation to the right hand side.
-                        std::tie(z(j), y(it, 0)) = fprota(c, s, z(j), y(it, 0));
+                        std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
                         // transformations to the left hand side with respect to a2.
-                        for( int64_t h2i = 0; h2i < k; h2i++ ) {
-                            std::tie(A2(j, h2i), H2(it, h2i)) = fprota(c, s, A2(j, h2i), H2(it, h2i));
+                        for( int64_t h2i = 1; h2i <= k; h2i++ ) {
+                            std::tie(A2(j - 1, h2i - 1), H2(it - 1, h2i - 1)) = fprota(
+                                c, s, A2(j - 1, h2i - 1), H2(it - 1, h2i - 1));
                         }
 
-                        if( j == n10 - 1 ) {
+                        if( j == n10 ) {
                             break;
                         }
                         int64_t i2 = std::min(n10 - j, (int64_t) k) + 1;
 
                         // transformations to the left hand side with respect to a1.
                         for( int64_t h1i = 1; h1i < i2; h1i++ ) {
-                            std::tie(A1(j, h1i), H1(it, h1i)) = fprota(c, s, A1(j, h1i), H1(it, h1i));
+                            std::tie(A1(j - 1, h1i), H1(it - 1, h1i)) = fprota(c, s, A1(j - 1, h1i), H1(it - 1, h1i));
                         }
 
-                        for( int64_t h1i = 0; h1i < i2 - 1; h1i++ ) {
-                            H1(it, h1i) = H1(it, h1i + 1);
+                        for( int64_t h1i = 1; h1i <= i2; h1i++ ) {
+                            H1(it - 1, h1i - 1) = H1(it - 1, h1i);
                         }
-                        H1(it, i2 - 1) = 0.0;
+                        H1(it - 1, i2 - 1) = 0.0;
 
                     }
                 }
             }
 
             // rotation with the rows n10+1,...n7 of matrix a.
-            for( int64_t j = 0; j < k; j++ ) {
+            for( int64_t j = 1; j <= k; j++ ) {
                 ij  = n10 + j;
-                double piv = H2(it, j);
-                if (ij <= -1 || piv == 0.0) {
+                double piv = H2(it - 1, j - 1);
+                if (ij <= 0 || piv == 0.0) {
                     continue;
                 }
 
                 // calculate the parameters of the givens transformation.
                 double c, s, r;
-                DLARTG(&A2(ij, j), &piv, &c, &s, &r);
-                A2(ij, j) = r;
+                DLARTG(&A2(ij - 1, j - 1), &piv, &c, &s, &r);
+                A2(ij - 1, j - 1) = r;
                 // transformations to right hand side.
-                std::tie(z(ij), y(it, 0)) = fprota(c, s, z(ij), y(it, 0));
+                std::tie(z(ij - 1), yi) = fprota(c, s, z(ij - 1), yi);
 
-                if( j == k - 1 ) {
+                if( j == k ) {
                     break;
                 }
 
                 // transformations to left hand side.
-                for( int64_t h2i = j + 1; h2i < k; h2i++ ) {
-                    std::tie(A2(ij, h2i), H2(it, h2i)) = fprota(c, s, A2(ij, h2i), H2(it, h2i));
+                for( int64_t h2i = j + 1; h2i <= k; h2i++ ) {
+                    std::tie(A2(ij - 1, h2i - 1), H2(it - 1, h2i - 1)) = fprota(c, s, A2(ij - 1, h2i - 1), H2(it - 1, h2i - 1));
                 }
 
             }
@@ -474,9 +484,9 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
             // rotation of the new row of the observation matrix into triangle in case the b-splines
             // nj,k+1(x),j=n7+1,...n-k-1 are all zero at xi.
             int64_t j = l5;
-            for( int64_t i = 0; i < k + 1; i++ ) {
+            for( int64_t i = 1; i <= k + 1; i++ ) {
                 j = j + 1;
-                double piv = H(it, i);
+                double piv = H(it - 1, i - 1);
                 if( piv == 0.0 ) {
                     continue;
                 }
@@ -485,17 +495,17 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
                 A1(j - 1, 0) = r;
 
-                std::tie(z(j - 1), y(it, 0)) = fprota(c, s, z(j - 1), y(it, 0));
+                std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
 
-                if( i == k) {
+                if( i == k + 1 ) {
                     break;
                 }
                 int64_t i2 = 1;
                 int64_t i3 = i + 1;
 
-                for( int64_t i1 = i3; i1 < k + 1; i1++ ) {
+                for( int64_t i1 = i3; i1 <= k + 1; i1++ ) {
                     i2 = i2 + 1;
-                    std::tie(A1(j, i2 - 1), H(it, i1)) = fprota(c, s, A1(j, i2 - 1), H(it, i1));
+                    std::tie(A1(j - 1, i2 - 1), H(it - 1, i1 - 1)) = fprota(c, s, A1(j - 1, i2 - 1), H(it - 1, i1 - 1));
                 }
             }
         }
@@ -519,6 +529,73 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
             }
         }
         p = n7/p;
+    }
+}
+
+void qr_reduce_augmented_matrices(
+    double* g1ptr, double* g2ptr,
+    double* h1ptr, double* h2ptr,
+    double* cptr, double* offsetptr,
+    int k, int64_t len_t
+) {
+    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
+    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
+    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
+    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
+    auto c = RealArray2D(cptr, len_t - k - 1, 1);
+    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
+
+    for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
+        double yi = 0.0;
+        for( int64_t j = offset(it - 1); j <= len_t - 3*k - 2; j++ ) {
+            double piv = h1(it - 1, 0);
+
+            double cos, sin, r;
+            DLARTG(&g1(j - 1, 0), &piv, &cos, &sin, &r);
+            g1(j - 1, 0) = r;
+
+            std::tie(c(j - 1, 0), yi) = fprota(cos, sin, c(j - 1, 0), yi);
+
+            for( int64_t h2i = 0; h2i < k + 1; h2i++ ) {
+                std::tie(g2(j - 1, h2i), h2(it - 1, h2i)) = fprota(cos, sin, g2(j - 1, h2i), h2(it - 1, h2i));
+            }
+
+            if( j == (len_t - 3*k - 2) ) {
+                break ;
+            }
+
+            int64_t i2 = std::min(len_t - 3*k - 2 - j, (int64_t) k + 1) + 1;
+            for( int64_t h1i = 1; h1i < i2; h1i++ ) {
+                std::tie(g1(j - 1, h1i), h1(it - 1, h1i)) = fprota(cos, sin, g1(j - 1, h1i), h1(it - 1, h1i));
+            }
+
+            for( int64_t h1i = 1; h1i <= (i2 - 1); h1i++ ) {
+                h1(it - 1, h1i - 1) = h1(it - 1, h1i);
+            }
+            h1(it - 1, i2 - 1) = 0.0;
+        }
+
+        for( int64_t j = 1; j <= k + 1; j++ ) {
+            int64_t ij = len_t - 3*k - 2 + j;
+            if( ij <= 0 ) {
+                continue;
+            }
+            double piv = h2(it - 1, j - 1);
+
+            double cos, sin, r;
+            DLARTG(&g2(ij - 1, j - 1), &piv, &cos, &sin, &r);
+            g2(ij - 1, j - 1) = r;
+
+            std::tie(c(ij - 1, 0), yi) = fprota(cos, sin, c(ij - 1, 0), yi);
+
+            if( j == k + 1) {
+                break ;
+            }
+
+            for( int64_t h2i = j + 1; h2i <= k + 1; h2i++ ) {
+                std::tie(g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1)) = fprota(cos, sin, g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1));
+            }
+        }
     }
 }
 
@@ -578,19 +655,19 @@ void _fpbacp(
         ConstRealArray2D& A1,
         ConstRealArray2D& A2,
         ConstRealArray1D& Z,
-        int k, int64_t len_t,
+        int k, int kp, int64_t len_t,
         RealArray2D& c) {
 
     int64_t nc = len_t - k - 1;
     int64_t n = nc - k;
-    int64_t n2 = n - k;
+    int64_t n2 = n - kp;
     int64_t l = n;
-    for( int64_t i = 1; i <= k; i++ ) {
+    for( int64_t i = 1; i <= kp; i++ ) {
         double store = Z(l - 1);
-        int64_t j = k + 2 - i;
+        int64_t j = kp + 2 - i;
         if( i != 1 ) {
             int64_t l0 = l;
-            for( int64_t l1 = j; l1 <= k; l1++ ) {
+            for( int64_t l1 = j; l1 <= kp; l1++ ) {
                 l0 = l0 + 1;
                 store = store - c(l0 - 1, 0) * A2(l - 1, l1 - 1);
             }
@@ -604,7 +681,7 @@ void _fpbacp(
     for( int64_t i = 1; i <= n2; i++ ) {
         double store = Z(i - 1);
         l = n2;
-        for( int64_t j = 1; j <= k; j++ ) {
+        for( int64_t j = 1; j <= kp; j++ ) {
             l = l + 1;
             store = store - c(l - 1, 0) * A2(i - 1, j - 1);
         }
@@ -618,8 +695,8 @@ void _fpbacp(
     for( int64_t j = 2; j <= n2; j++ ) {
         i = i - 1;
         double store = c(i - 1, 0);
-        int64_t i1 = k;
-        if( j <= k ) {
+        int64_t i1 = kp;
+        if( j <= kp ) {
             i1 = j - 1;
         }
         l = i;
@@ -634,19 +711,21 @@ void _fpbacp(
 void
 fpbacp( /* inputs*/
        const double *A1ptr,
+       int64_t a1_rows,
        const double *A2ptr,
+       int64_t a2_rows,
        const double *Zptr,
-       int k, int64_t len_t,
+       int k, int kp, int64_t len_t,
        /* output */
        double *cptr) {
 
     int64_t nc = len_t - k - 1;
-    auto A1 = ConstRealArray2D(A1ptr, nc, k + 1);
-    auto A2 = ConstRealArray2D(A2ptr, nc - k, k);
+    auto A1 = ConstRealArray2D(A1ptr, a1_rows, kp + 1);
+    auto A2 = ConstRealArray2D(A2ptr, a2_rows, kp);
     auto Z = ConstRealArray1D(Zptr, nc);
     auto c = RealArray2D(cptr, nc, 1);
 
-    _fpbacp(A1, A2, Z, k, len_t, c);
+    _fpbacp(A1, A2, Z, k, kp, len_t, c);
 
     int64_t offset = len_t - 2*k - 1;
     for( int64_t i = 0; i < k; i++ ) {
@@ -1166,14 +1245,15 @@ void init_agumented_matrices(
     double *a1ptr, double *a2ptr, double *bptr,
     int k, int64_t len_t,
     double *g1ptr, double *g2ptr,
-    double *h1ptr, double *h2ptr) {
+    double *h1ptr, double *h2ptr, double *offsetptr) {
     auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
-    auto g2 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 1);
+    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
     auto a1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
     auto a2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);
     auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
     auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
     auto b = RealArray2D(bptr, len_t - 2*k - 2, k + 2);
+    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
 
     int64_t l0, l, l1;
 
@@ -1216,7 +1296,7 @@ void init_agumented_matrices(
             l = it;
             l0 = it;
             for( int64_t j = 1; j <= k + 2; j++ ) {
-                if( l0 == len_t - 3*k - 2 ) {
+                if( l0 == len_t - 3*k - 1 ) {
                     l0 = 1;
                     for( int64_t l1 = j; l1 <= k + 2; l1++ ) {
                         h2(it - 1, l0 - 1) = b(it - 1, l1 - 1);
@@ -1245,6 +1325,8 @@ void init_agumented_matrices(
                 }
             }
         }
+
+        offset(it - 1) = l;
     }
 }
 
