@@ -22,7 +22,8 @@ import operator
 import numpy as np
 
 from ._bsplines import (
-    _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr
+    _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr,
+    _periodic_knots
 )
 from . import _dierckx      # type: ignore[attr-defined]
 
@@ -39,7 +40,7 @@ TOL = 0.001
 MAXIT = 20
 
 
-def _get_residuals(x, y, t, k, w, periodic=False):
+def _get_residuals(x, y, t, k, w, periodic=False, get_fp=False):
     # FITPACK has (w*(spl(x)-y))**2; make_lsq_spline has w*(spl(x)-y)**2
     w2 = w**2
 
@@ -54,10 +55,17 @@ def _get_residuals(x, y, t, k, w, periodic=False):
     #         * For 2D (parametric=True), the summation is actually how the
     #           'residuals' are defined, see Eq. (42) in Dierckx1982
     #           (the reference is in the docstring of `class F`) below.
-    _, _, c = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
+    if get_fp:
+        _, _, c, fp = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, get_fp=True)
+    else:
+        _, _, c = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     c = np.ascontiguousarray(c)
     spl = BSpline(t, c, k)
-    return _compute_residuals(w2, spl(x), y)
+    residuals = _compute_residuals(w2, spl(x), y)
+    if get_fp:
+        return residuals, fp
+    else:
+        return residuals
 
 
 def _compute_residuals(w2, splx, y):
@@ -239,7 +247,10 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
-        nest = max(m + k + 1, 2*k + 3)
+        if periodic:
+            nest = max(m + 2*k, 2*k + 3)
+        else:
+            nest = max(m + k + 1, 2*k + 3)
     else:
         if nest < 2*(k + 1):
             raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
@@ -260,11 +271,11 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         nplus = 1
     n = t.shape[0]
     fp = 0.0
-    fpold = 0.0
+    fpold = _dierckx.get_residual_p0(y, w)
 
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
-    for _ in range(m):
+    for iter in range(m):
         if periodic:
             per = xe - xb
             n = t.shape[0]
@@ -276,9 +287,9 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         yield t
 
         # construct the LSQ spline with this set of knots
-        fpold = fp
-        residuals = _get_residuals(x, y, t, k, w=w, periodic=periodic)
-        fp = residuals.sum()
+        residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
+        if not periodic:
+            fp = residuals.sum()
         fpms = fp - s
 
         # c  test whether the approximation sinf(x) is an acceptable solution.
@@ -307,7 +318,10 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
             # c  if n = nmax, sinf(x) is an interpolating spline.
             # c  if n=nmax we locate the knots as for interpolation.
             if n >= nmax:
-                t = _not_a_knot(x, k)
+                if not periodic:
+                    t = _not_a_knot(x, k)
+                else:
+                    t = _periodic_knots(x, k)
                 yield t
                 return
 
@@ -321,6 +335,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
             if j < nplus - 1:
                 residuals = _get_residuals(x, y, t, k, w=w)
 
+        fpold = fp
     # this should never be reached
     return
 
@@ -740,7 +755,10 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
-        nest = max(m + k + 1, 2*k + 3)
+        if periodic:
+            nest = max(m + 2*k, 2*k + 3)
+        else:
+            nest = max(m + k + 1, 2*k + 3)
     else:
         if nest < 2*(k + 1):
             raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
@@ -777,8 +795,11 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     # ### bespoke solver ####
     # initial conditions
     # f(p=inf) : LSQ spline with knots t   (XXX: reuse R, c)
-    residuals = _get_residuals(x, y, t, k, w=w)
-    fp = residuals.sum()
+    if not periodic:
+        residuals = _get_residuals(x, y, t, k, w=w)
+        fp = residuals.sum()
+    else:
+        residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
     fpinf = fp - s
 
     # f(p=0): LSQ spline without internal knots

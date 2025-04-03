@@ -302,13 +302,17 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
     Py_ssize_t len_t;
     int init_p = false; // Default
     double p = 0.0;
+    bool get_fp = false; // Default
+    double fp = 0.0;
 
     // XXX: if the overhead is large, flip back to positional only arguments
-    const char *kwlist[] = {"a", "h1", "h2", "offset", "nc", "y", "k", "len_t", "init_p", NULL};
+    const char *kwlist[] = {"a", "h1", "h2", "offset",
+                            "nc", "y", "k", "len_t",
+                            "init_p", "get_fp", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin|p", const_cast<char **>(kwlist),
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin|pp", const_cast<char **>(kwlist),
                                     &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t,
-                                    &init_p)) {
+                                    &init_p, &get_fp)) {
         return NULL;
     }
 
@@ -358,11 +362,16 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
             k, len_t,
             static_cast<double *>(PyArray_DATA(a_A1)), static_cast<double *>(PyArray_DATA(a_A2)),
             static_cast<double *>(PyArray_DATA(a_Z)),
-            init_p, p
+            init_p, p,
+            get_fp, fp
         );
 
         if( init_p ) {
-            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z), PyFloat_FromDouble(p));
+            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2),
+                                           PyArray_Return(a_Z), PyFloat_FromDouble(p));
+        } else if( get_fp ) {
+            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2),
+                                           PyArray_Return(a_Z), PyFloat_FromDouble(fp));
         } else {
             return Py_BuildValue("(NNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z));
         }
