@@ -359,7 +359,9 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
           double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
           double *zptr,                                    // z(len_t - k - 1),
           bool init_p,
-          double& p
+          double& p,
+          bool get_fp,
+          double& fp
 ) {
     auto H = RealArray2D(aptr, m, nz);
     auto H1 = RealArray2D(h1ptr, m, nz);
@@ -380,6 +382,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
     int64_t nk1 = len_t - k - 1;
     int64_t n7 = nk1 - k;
     int64_t n10 = n7 - k;
+    fp = 0.0;
     for( int64_t it = 1; it <= m; it++ ) {
         double yi = y(it - 1, 0);
         int64_t ind = offset[it - 1] + k;
@@ -509,6 +512,8 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 }
             }
         }
+
+        fp += yi*yi;
     }
 
     if( init_p ) {

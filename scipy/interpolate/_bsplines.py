@@ -1856,7 +1856,7 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
 # LSQ spline helpers #
 ######################
 
-def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
+def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False, get_fp=False):
     """Solve for the LSQ spline coeffs given x, y and knots.
 
     `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
@@ -1880,13 +1880,15 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
                 len(t), True
             )         # modifies arguments in-place
         else:
-            A1, A2, Z = _dierckx.qr_reduce_periodic(
+            A1, A2, Z, fp = _dierckx.qr_reduce_periodic(
                 R, H1, H2, offset, nc, y_w, k,
-                len(t)
+                len(t), False, True
             )         # modifies arguments in-place
         c = _dierckx.fpbacp(A1, A2, Z, k, k, len(t))
         if solve_for_p:
             return (R, A1, A2, Z), y_w, c, p
+        if get_fp:
+            return R, y_w, c, fp
         return R, y_w, c
 
 
