@@ -2167,7 +2167,7 @@ class TestSmoothingSpline:
         # using an iterative algorithm for minimizing the GCV criteria. These
         # algorithms may vary, so the tolerance should be rather low.
         # Not checking dtypes as gcvspl.npz stores little endian arrays, which
-        # result in conflicting dtypes on big endian systems. 
+        # result in conflicting dtypes on big endian systems.
         xp_assert_close(y_compr, y_GCVSPL, atol=1e-4, rtol=1e-4, check_dtype=False)
 
     def test_non_regularized_case(self):
@@ -3563,6 +3563,32 @@ class TestMakeSplrep:
 
         assert spl_0.t.shape[0] == n + k + 1
         assert spl_1.t.shape[0] == 2 * (k + 1)
+
+    def test_periodic_with_periodic_data(self):
+        N = 10
+        a, b, dx = 0, 2*np.pi, 0.2*np.pi
+        x = np.linspace(a, b, N + 1)    # nodes
+
+        y = np.cos(x)
+        tck = make_splrep(x, y, s=1e-8, periodic=True)
+        xp_assert_close(splev(x, tck), y, atol=1e-5, rtol=1e-4)
+
+        y = np.sin(x) + np.cos(x)
+        tck = make_splrep(x, y, s=1e-12, periodic=True)
+        xp_assert_close(splev(x, tck), y, atol=1e-5, rtol=1e-6)
+
+        y = 5*np.sin(x) + np.cos(x)*3
+        tck = make_splrep(x, y, s=1e-8, periodic=True)
+        xp_assert_close(splev(x, tck), y, atol=1e-5, rtol=1e-4)
+
+    def test_periodic_with_non_periodic_data(self):
+        N = 10
+        a, b, dx = 0, 2*np.pi, 0.2*np.pi
+        x = np.linspace(a, b, N + 1)    # nodes
+
+        y = np.exp(x)
+        tck = make_splrep(x, y, s=1e-8, periodic=True)
+        xp_assert_close(np.max(np.abs(splev(x, tck) - y)), 534.4916122179081)
 
 
 class TestMakeSplprep:
