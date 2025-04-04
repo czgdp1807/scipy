@@ -22,7 +22,8 @@ import operator
 import numpy as np
 
 from ._bsplines import (
-    _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr
+    _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr,
+    _periodic_knots
 )
 from . import _dierckx      # type: ignore[attr-defined]
 
@@ -39,7 +40,7 @@ TOL = 0.001
 MAXIT = 20
 
 
-def _get_residuals(x, y, t, k, w):
+def _get_residuals(x, y, t, k, w, periodic=False, get_fp=False):
     # FITPACK has (w*(spl(x)-y))**2; make_lsq_spline has w*(spl(x)-y)**2
     w2 = w**2
 
@@ -54,10 +55,17 @@ def _get_residuals(x, y, t, k, w):
     #         * For 2D (parametric=True), the summation is actually how the
     #           'residuals' are defined, see Eq. (42) in Dierckx1982
     #           (the reference is in the docstring of `class F`) below.
-    _, _, c = _lsq_solve_qr(x, y, t, k, w)
+    if get_fp and periodic:
+        _, _, c, fp = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, get_fp=True)
+    else:
+        _, _, c = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     c = np.ascontiguousarray(c)
     spl = BSpline(t, c, k)
-    return _compute_residuals(w2, spl(x), y)
+    residuals = _compute_residuals(w2, spl(x), y)
+    if get_fp and periodic:
+        return residuals, fp
+    else:
+        return residuals
 
 
 def _compute_residuals(w2, splx, y):
@@ -89,9 +97,10 @@ def add_knot(x, t, k, residuals):
     return t_new
 
 
-def _validate_inputs(x, y, w, k, s, xb, xe, parametric):
+def _validate_inputs(x, y, w, k, s, xb, xe, parametric, periodic=False):
     """Common input validations for generate_knots and make_splrep.
     """
+    # TODO: Add validity checks for periodic inputs
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
 
@@ -138,7 +147,7 @@ def _validate_inputs(x, y, w, k, s, xb, xe, parametric):
     return x, y, w, k, s, xb, xe
 
 
-def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
+def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
     """Generate knot vectors until the Least SQuares (LSQ) criterion is satified.
 
     Parameters
@@ -223,13 +232,14 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
         return
 
     x, y, w, k, s, xb, xe = _validate_inputs(
-        x, y, w, k, s, xb, xe, parametric=np.ndim(y) == 2
+        x, y, w, k, s, xb, xe, parametric=np.ndim(y) == 2,
+        periodic=periodic
     )
 
-    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, nest=nest)
+    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, nest=nest, periodic=periodic)
 
 
-def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None):
+def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
 
     acc = s * TOL
     m = x.size    # the number of data points
@@ -237,29 +247,51 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None)
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
-        nest = max(m + k + 1, 2*k + 3)
+        if periodic:
+            nest = max(m + 2*k, 2*k + 3)
+        else:
+            nest = max(m + k + 1, 2*k + 3)
     else:
         if nest < 2*(k + 1):
             raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
 
-    nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
-    nmax = m + k + 1  # the number of knots for the spline interpolation
+    if not periodic:
+        nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
+        nmax = m + k + 1  # the number of knots for the spline interpolation
+    else:
+        nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
+        nmax = m + 2*k  # the number of knots for the spline interpolation
 
     # start from no internal knots
-    t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
+    if not periodic:
+        t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
+    else:
+        t = np.zeros(2*k + 3, dtype=float)
+        t[k + 1] = x[(m + 1)//2 - 1]
+        nplus = 1
     n = t.shape[0]
     fp = 0.0
-    fpold = 0.0
+    fpold = _dierckx.get_residual_p0(y, w)
 
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
-    for _ in range(m):
+    for iter in range(m):
+        if periodic:
+            per = xe - xb
+            n = t.shape[0]
+            t[k] = xb
+            t[n - k - 1] = xe
+            for j in range(1, k + 1):
+                t[k - j] = t[n - k - j - 1] - per
+                t[n - k + j - 1] = t[k + j] + per
         yield t
 
         # construct the LSQ spline with this set of knots
-        fpold = fp
-        residuals = _get_residuals(x, y, t, k, w=w)
-        fp = residuals.sum()
+        if periodic:
+            residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
+        else:
+            residuals = _get_residuals(x, y, t, k, w=w)
+            fp = residuals.sum()
         fpms = fp - s
 
         # c  test whether the approximation sinf(x) is an acceptable solution.
@@ -288,7 +320,10 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None)
             # c  if n = nmax, sinf(x) is an interpolating spline.
             # c  if n=nmax we locate the knots as for interpolation.
             if n >= nmax:
-                t = _not_a_knot(x, k)
+                if not periodic:
+                    t = _not_a_knot(x, k)
+                else:
+                    t = _periodic_knots(x, k)
                 yield t
                 return
 
@@ -302,6 +337,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None)
             if j < nplus - 1:
                 residuals = _get_residuals(x, y, t, k, w=w)
 
+        fpold = fp
     # this should never be reached
     return
 
@@ -511,6 +547,71 @@ class F:
 
         return fp - self.s
 
+class Fperiodic:
+    def __init__(self, x, y, t, k, s, w=None, *, R=None, Y=None, A1=None, A2=None, Z=None):
+        self.x = x
+        self.y = y
+        self.t = t
+        self.k = k
+        w = np.ones_like(x, dtype=float) if w is None else w
+        if w.ndim != 1:
+            raise ValueError(f"{w.ndim = } != 1.")
+        self.w = w
+        self.s = s
+
+        if y.ndim != 2:
+            raise ValueError(f"F: expected y.ndim == 2, got {y.ndim = } instead.")
+
+        # ### precompute what we can ###
+
+        # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L250
+        # c  evaluate the discontinuity jump of the kth derivative of the
+        # c  b-splines at the knots t(l),l=k+2,...n-k-1 and store in b.
+        b, b_offset, b_nc = disc(t, k)
+
+        # the QR factorization of the data matrix, if not provided
+        # NB: otherwise, must be consistent with x,y & s, but this is not checked
+        if ((A1 is None or A2 is None or Z is None) or
+            (R is None and Y is None)):
+            (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
+                x, y, t, k, w, periodic=True, solve_for_p=True)
+
+        G1, G2, H1, H2, offset = _dierckx.init_agumented_matrices(A1, A2, b, len(t), k)
+
+        self.G1_ = G1
+        self.G2_ = G2
+        self.H1_ = H1
+        self.H2_ = H2
+        self.Z_ = Z
+        self.offset_ = offset
+
+    def __call__(self, p):
+        G1 = self.G1_.copy()
+        G2 = self.G2_.copy()
+        H1 = self.H1_.copy()
+        H2 = self.H2_.copy()
+        Z = self.Z_.copy()
+
+        pinv = 1/p
+        H1 = H1*pinv
+        H2 = H2*pinv
+
+        c = np.empty((len(self.t) - self.k - 1, 1), dtype=Z.dtype)
+        c[:len(self.t) - 2*self.k - 1, 0] = Z[:len(self.t) - 2*self.k - 1]
+
+        _dierckx.qr_reduce_augmented_matrices(
+            G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
+
+        c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]), self.k, self.k + 1, len(self.t))
+
+        spl = BSpline(self.t, c, self.k)
+        residuals = _compute_residuals(self.w[:-1]**2, spl(self.x[:-1]), self.y[:-1])
+        fp = residuals.sum()
+
+        self.spl = spl   # store it
+
+        return fp - self.s
+
 
 def fprati(p1, f1, p2, f2, p3, f3):
     """The root of r(p) = (u*p + v) / (p + w) given three points and values,
@@ -647,7 +748,7 @@ def root_rati(f, p0, bracket, acc):
     return Bunch(converged=converged, root=p, iterations=it, ier=ier)
 
 
-def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
+def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
     """Shared infra for make_splrep and make_splprep.
     """
     acc = s * TOL
@@ -656,15 +757,18 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
-        nest = max(m + k + 1, 2*k + 3)
+        if periodic:
+            nest = max(m + 2*k, 2*k + 3)
+        else:
+            nest = max(m + k + 1, 2*k + 3)
     else:
         if nest < 2*(k + 1):
-            raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")    
+            raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
         if t is not None:
             raise ValueError("Either supply `t` or `nest`.")
 
     if t is None:
-        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe, nest=nest)
+        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe, nest=nest, periodic=periodic)
         t = list(gen)[-1]
     else:
         fpcheck(x, t, k)
@@ -678,25 +782,45 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
 
     # c  initial value for p.
     # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L253
-    R, Y, _ = _lsq_solve_qr(x, y, t, k, w)
+    solve_for_p = False
+    if periodic:
+        solve_for_p = True
+        R, Y, _, p = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, solve_for_p=solve_for_p)
+    else:
+        R, Y, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     nc = t.shape[0] -k -1
-    p = nc / R[:, 0].sum()
+    if not periodic:
+        p = nc / R[:, 0].sum()
+    else:
+        R, A1, A2, Z = R
 
     # ### bespoke solver ####
     # initial conditions
     # f(p=inf) : LSQ spline with knots t   (XXX: reuse R, c)
-    residuals = _get_residuals(x, y, t, k, w=w)
-    fp = residuals.sum()
+    if not periodic:
+        residuals = _get_residuals(x, y, t, k, w=w)
+        fp = residuals.sum()
+    else:
+        residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
     fpinf = fp - s
 
     # f(p=0): LSQ spline without internal knots
-    residuals = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
-    fp0 = residuals.sum()
-    fp0 = fp0 - s
+    if not periodic:
+        residuals = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
+        fp0 = residuals.sum()
+        fp0 = fp0 - s
+    else:
+        # Hanldes only y.shape[1] == 1
+        assert(y.shape[1] == 1)
+        fp0 = _dierckx.get_residual_p0(y, w)
+        fp0 = fp0 - s
 
     # solve
     bracket = (0, fp0), (np.inf, fpinf)
-    f = F(x, y, t, k=k, s=s, w=w, R=R, Y=Y)
+    if not periodic:
+        f = F(x, y, t, k=k, s=s, w=w, R=R, Y=Y)
+    else:
+        f = Fperiodic(x, y, t, k=k, s=s, w=w, R=R, Y=Y, A1=A1, A2=A2, Z=Z)
     _ = root_rati(f, p, bracket, acc)
 
     # solve ALTERNATIVE: is roughly equivalent, gives slightly different results
@@ -711,7 +835,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     return f.spl
 
 
-def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
+def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
     r"""Create a smoothing B-spline function with bounded error, minimizing derivative jumps.
 
     Given the set of data points ``(x[i], y[i])``, determine a smooth spline
@@ -833,11 +957,13 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None):
     if s == 0:
         if t is not None or w is not None or nest is not None:
             raise ValueError("s==0 is for interpolation only")
+        if periodic:
+            return make_interp_spline(x, y, k=k, bc_type='periodic')
         return make_interp_spline(x, y, k=k)
 
-    x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe, parametric=False)
+    x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe, parametric=False, periodic=periodic)
 
-    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, t=t, nest=nest)
+    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, t=t, nest=nest, periodic=periodic)
 
     # postprocess: squeeze out the last dimension: was added to simplify the internals.
     spl.c = spl.c[:, 0]
@@ -989,4 +1115,3 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
     spl1 = BSpline(spl.t, cc, spl.k, axis=1)
 
     return spl1, u
-

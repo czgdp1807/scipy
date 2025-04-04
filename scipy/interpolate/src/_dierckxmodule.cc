@@ -82,7 +82,7 @@ py_fpknot(PyObject* self, PyObject *args)
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
-        return NULL;        
+        return NULL;
     };
 }
 
@@ -121,7 +121,7 @@ py_fpback(PyObject* self, PyObject *args)
     if (nc > m) {
         std::string msg = "nc = " + std::to_string(nc) + " > m = " + std::to_string(m);
         PyErr_SetString(PyExc_ValueError, msg.c_str());
-        return NULL;        
+        return NULL;
     }
 
     // allocate the output buffer
@@ -129,7 +129,7 @@ py_fpback(PyObject* self, PyObject *args)
     PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
     if (a_c == NULL) {
         PyErr_NoMemory();
-        return NULL;     
+        return NULL;
     }
 
     try {
@@ -137,6 +137,89 @@ py_fpback(PyObject* self, PyObject *args)
         fitpack::fpback(static_cast<const double *>(PyArray_DATA(a_R)), m, nz,
                         nc,
                         static_cast<const double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
+                        static_cast<double *>(PyArray_DATA(a_c))
+        );
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+
+    return (PyObject *)a_c;
+}
+
+/*
+ * def _fpbacp(const double[:, ::1] A1, const double[:, ::1] A2, const double[:, ::1] Z,
+ *             const int k, const int64_t len_t
+ */
+static PyObject*
+py_fpbacp(PyObject* self, PyObject *args)
+{
+    PyObject *py_A1 = NULL, *py_A2 = NULL, *py_Z = NULL;
+    int k, kp;
+    Py_ssize_t len_t;
+
+    if(!PyArg_ParseTuple(args, "OOOiin", &py_A1, &py_A2, &py_Z, &k, &kp, &len_t)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_A1, 2, NPY_DOUBLE) &&
+          check_array(py_A2, 2, NPY_DOUBLE) &&
+          check_array(py_Z, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_A1 = (PyArrayObject *)py_A1;
+    PyArrayObject *a_A2 = (PyArrayObject *)py_A2;
+    PyArrayObject *a_Z = (PyArrayObject *)py_Z;
+
+    // check consistency of array sizes
+    Py_ssize_t A1_dim1 = PyArray_DIM(a_A1, 0);
+    Py_ssize_t A1_dim2 = PyArray_DIM(a_A1, 1);
+    Py_ssize_t A2_dim1 = PyArray_DIM(a_A2, 0);
+    Py_ssize_t A2_dim2 = PyArray_DIM(a_A2, 1);
+    Py_ssize_t Z_dim = PyArray_DIM(a_Z, 0);
+
+    int64_t nc = len_t - k - 1;
+
+    // if (A1_dim1 != nc || A1_dim2 != k + 1) {
+    //     std::string msg = ("A1.shape = (" +
+    //         std::to_string(A1_dim1) + ", " + std::to_string(A1_dim2) + ") != (" +
+    //         std::to_string(nc) + ", " + std::to_string((k + 1)) + ")");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
+
+    // if (A2_dim1 != nc - k || A2_dim2 != k) {
+    //     std::string msg = ("A2.shape = (" +
+    //         std::to_string(A2_dim1) + ", " + std::to_string(A2_dim2) + ") != (" +
+    //         std::to_string((nc - k)) + ", " + std::to_string(k) + ")");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
+
+    // if (Z_dim != nc) {
+    //     std::string msg = ("Z.shape = (" +
+    //         std::to_string(Z_dim) + ",) != (" + std::to_string(nc) + ",)");
+    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
+    //     return NULL;
+    // }
+
+    // allocate the output buffer
+    npy_intp dims[2] = {nc, 1};
+    PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+    if (a_c == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here
+        fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)), A1_dim1,
+                        static_cast<const double *>(PyArray_DATA(a_A2)), A2_dim1,
+                        static_cast<const double *>(PyArray_DATA(a_Z)),
+                        k, kp, len_t,
                         static_cast<double *>(PyArray_DATA(a_c))
         );
     }
@@ -204,6 +287,241 @@ py_qr_reduce(PyObject* self, PyObject *args, PyObject *kwargs)
 }
 
 
+/*
+ * def _qr_reduce_periodic(double[:, ::1] a, double[:, ::1] a1, double[:, ::1] a2,     # A packed
+                           ssize_t[::1] offset, ssize_t nc, double[:, ::1] y,
+ *                         int k, int64_t len_t, bint init_p=False
+ * ):
+ */
+static PyObject*
+py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_a = NULL, *py_h1 = NULL, *py_h2 = NULL, *py_offs = NULL, *py_y = NULL;
+    Py_ssize_t nc;
+    int k;
+    Py_ssize_t len_t;
+    int init_p = false; // Default
+    double p = 0.0;
+    bool get_fp = false; // Default
+    double fp = 0.0;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"a", "h1", "h2", "offset",
+                            "nc", "y", "k", "len_t",
+                            "init_p", "get_fp", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin|pp", const_cast<char **>(kwlist),
+                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t,
+                                    &init_p, &get_fp)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_a, 2, NPY_DOUBLE) &&
+          check_array(py_h1, 2, NPY_DOUBLE) &&
+          check_array(py_h2, 2, NPY_DOUBLE) &&
+          check_array(py_offs, 1, NPY_INT64) &&
+          check_array(py_y, 2, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_a = (PyArrayObject *)py_a;
+    PyArrayObject *a_h1 = (PyArrayObject *)py_h1;
+    PyArrayObject *a_h2 = (PyArrayObject *)py_h2;
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_offs = (PyArrayObject *)py_offs;
+
+    npy_intp dims1[2] = {len_t - k - 1, k + 1};
+    PyArrayObject *a_A1 = (PyArrayObject*)PyArray_EMPTY(2, dims1, NPY_DOUBLE, 0);
+    npy_intp dims2[2] = {len_t - 2*k - 1, k};
+    PyArrayObject *a_A2 = (PyArrayObject*)PyArray_EMPTY(2, dims2, NPY_DOUBLE, 0);
+    npy_intp dims3[1] = {len_t - k - 1};
+    PyArrayObject *a_Z = (PyArrayObject*)PyArray_EMPTY(1, dims3, NPY_DOUBLE, 0);
+
+    if ((a_A1 == NULL) || (a_A2 == NULL) || (a_Z == NULL)) {
+        PyErr_NoMemory();
+        Py_XDECREF(a_A1);
+        Py_XDECREF(a_A2);
+        Py_XDECREF(a_Z);
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::qr_reduce_periodic(
+            // a(m, nz), packed
+            static_cast<double *>(PyArray_DATA(a_a)),
+            // h1(m, nz), h2(m, nz) packed
+            static_cast<double *>(PyArray_DATA(a_h1)), static_cast<double *>(PyArray_DATA(a_h2)),
+            PyArray_DIM(a_a, 0), PyArray_DIM(a_a, 1),
+            // offset(m)
+            static_cast<int64_t *>(PyArray_DATA(a_offs)),
+            // if a were dense, it would have been a(m, nc)
+            nc,
+            // y(m, ydim2)
+            static_cast<double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
+            k, len_t,
+            static_cast<double *>(PyArray_DATA(a_A1)), static_cast<double *>(PyArray_DATA(a_A2)),
+            static_cast<double *>(PyArray_DATA(a_Z)),
+            init_p, p,
+            get_fp, fp
+        );
+
+        if( init_p ) {
+            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2),
+                                           PyArray_Return(a_Z), PyFloat_FromDouble(p));
+        } else if( get_fp ) {
+            return Py_BuildValue("(NNNN)", PyArray_Return(a_A1), PyArray_Return(a_A2),
+                                           PyArray_Return(a_Z), PyFloat_FromDouble(fp));
+        } else {
+            return Py_BuildValue("(NNN)", PyArray_Return(a_A1), PyArray_Return(a_A2), PyArray_Return(a_Z));
+        }
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+/*
+ * def _qr_reduce_augmented_matrices(double[:, ::1] g1, double[:, ::1] g2,
+                                     double[:, ::1] h1, double [:, ::1] h2,
+                                     int64_t len_t, int k
+ * ):
+ */
+static PyObject*
+py_qr_reduce_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_g1 = NULL, *py_g2 = NULL, *py_h1 = NULL;
+    PyObject *py_h2 = NULL, *py_c = NULL, *py_offset = NULL;
+    int k;
+    Py_ssize_t len_t;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"g1", "g2", "h1", "h2", "c", "offset", "len_t", "k", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOOOni", const_cast<char **>(kwlist),
+                                    &py_g1, &py_g2, &py_h1, &py_h2, &py_c,
+                                    &py_offset, &len_t, &k)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_g1, 2, NPY_DOUBLE) &&
+          check_array(py_g2, 2, NPY_DOUBLE) &&
+          check_array(py_h1, 2, NPY_DOUBLE) &&
+          check_array(py_h2, 2, NPY_DOUBLE) &&
+          check_array(py_c, 2, NPY_DOUBLE) &&
+          check_array(py_offset, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_g1 = (PyArrayObject *)py_g1;
+    PyArrayObject *a_g2 = (PyArrayObject *)py_g2;
+    PyArrayObject *a_h1 = (PyArrayObject *)py_h1;
+    PyArrayObject *a_h2 = (PyArrayObject *)py_h2;
+    PyArrayObject *a_c = (PyArrayObject *)py_c;
+    PyArrayObject *a_offset = (PyArrayObject *)py_offset;
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::qr_reduce_augmented_matrices(
+            static_cast<double *>(PyArray_DATA(a_g1)),
+            static_cast<double *>(PyArray_DATA(a_g2)),
+            static_cast<double *>(PyArray_DATA(a_h1)),
+            static_cast<double *>(PyArray_DATA(a_h2)),
+            static_cast<double *>(PyArray_DATA(a_c)),
+            static_cast<double *>(PyArray_DATA(a_offset)),
+            k, len_t
+        );
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+/*
+ * def _init_agumented_matrices(double[:, ::1] a1, double[:, ::1] a2,     # A packed
+                                ssize_t[::1] b, int64_t len_t, int k
+ * ):
+ */
+static PyObject*
+py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_a1 = NULL, *py_a2 = NULL, *py_b = NULL;
+    int k;
+    Py_ssize_t len_t;
+
+    // XXX: if the overhead is large, flip back to positional only arguments
+    const char *kwlist[] = {"a1", "a2", "b", "len_t", "k", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOni", const_cast<char **>(kwlist),
+                                    &py_a1, &py_a2, &py_b, &len_t, &k)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_a1, 2, NPY_DOUBLE) &&
+          check_array(py_a2, 2, NPY_DOUBLE) &&
+          check_array(py_b, 2, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_a1 = (PyArrayObject *)py_a1;
+    PyArrayObject *a_a2 = (PyArrayObject *)py_a2;
+    PyArrayObject *a_b = (PyArrayObject *)py_b;
+
+    npy_intp dims1[2] = {len_t - 2*k - 1, k + 2};
+    PyArrayObject *a_G1 = (PyArrayObject*)PyArray_EMPTY(2, dims1, NPY_DOUBLE, 0);
+    npy_intp dims2[2] = {len_t - 2*k - 1, k + 1};
+    PyArrayObject *a_G2 = (PyArrayObject*)PyArray_EMPTY(2, dims2, NPY_DOUBLE, 0);
+    npy_intp dims3[2] = {len_t - 2*k - 2, k + 2};
+    PyArrayObject *a_H1 = (PyArrayObject*)PyArray_EMPTY(2, dims3, NPY_DOUBLE, 0);
+    npy_intp dims4[2] = {len_t - 2*k - 2, k + 1};
+    PyArrayObject *a_H2 = (PyArrayObject*)PyArray_EMPTY(2, dims4, NPY_DOUBLE, 0);
+    npy_intp dims5[1] = {len_t - 2*k - 2};
+    PyArrayObject *a_offset = (PyArrayObject*)PyArray_EMPTY(1, dims5, NPY_DOUBLE, 0);
+
+
+    if ((a_G1 == NULL) || (a_G2 == NULL) || (a_H1 == NULL) || (a_H2 == NULL) || (a_offset == NULL)) {
+        PyErr_NoMemory();
+        Py_XDECREF(a_G1);
+        Py_XDECREF(a_G2);
+        Py_XDECREF(a_H1);
+        Py_XDECREF(a_H2);
+        Py_XDECREF(a_offset);
+        return NULL;
+    }
+
+    try {
+        // heavy lifting happens here, *in-place*
+        fitpack::init_agumented_matrices(
+            static_cast<double *>(PyArray_DATA(a_a1)),
+            static_cast<double *>(PyArray_DATA(a_a2)),
+            static_cast<double *>(PyArray_DATA(a_b)),
+            k, len_t,
+            static_cast<double *>(PyArray_DATA(a_G1)),
+            static_cast<double *>(PyArray_DATA(a_G2)),
+            static_cast<double *>(PyArray_DATA(a_H1)),
+            static_cast<double *>(PyArray_DATA(a_H2)),
+            static_cast<double *>(PyArray_DATA(a_offset))
+        );
+
+        return Py_BuildValue("(NNNNN)", PyArray_Return(a_G1), PyArray_Return(a_G2),
+            PyArray_Return(a_H1), PyArray_Return(a_H2), PyArray_Return(a_offset));
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 
 /*
  * def _data_matrix(const double[::1] x,
@@ -219,8 +537,9 @@ py_data_matrix(PyObject *self, PyObject *args)
     int64_t nc;
     int k;
     int extrapolate = 0;   // default is False
+    int periodic = 0;
 
-    if(!PyArg_ParseTuple(args, "OOiO|p", &py_x, &py_t, &k, &py_w, &extrapolate)) {
+    if(!PyArg_ParseTuple(args, "OOiO|pp", &py_x, &py_t, &k, &py_w, &extrapolate, &periodic)) {
         return NULL;
     }
 
@@ -244,6 +563,9 @@ py_data_matrix(PyObject *self, PyObject *args)
 
     // allocate temp and output arrays
     npy_intp m = PyArray_DIM(a_x, 0);
+    if( periodic ) {
+        m--;
+    }
     npy_intp dims[2] = {m, k+1};
     PyArrayObject *a_A = (PyArrayObject*)PyArray_EMPTY(2, dims, NPY_DOUBLE, 0);
     // np.zeros(m, dtype=np.intp)
@@ -258,22 +580,100 @@ py_data_matrix(PyObject *self, PyObject *args)
     }
 
     try {
-        // heavy lifting happens here
-        fitpack::data_matrix(
-            static_cast<const double *>(PyArray_DATA(a_x)), m,
-            static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
-            k,
-            static_cast<const double *>(PyArray_DATA(a_w)),
-            extrapolate,
-            static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, offset, nc)
-            static_cast<int64_t*>(PyArray_DATA(a_offs)),
-            &nc,
-            wrk.data()
-        );
+        if( !periodic ) {
+            // heavy lifting happens here
+            fitpack::data_matrix(
+                static_cast<const double *>(PyArray_DATA(a_x)), m,
+                static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                k,
+                static_cast<const double *>(PyArray_DATA(a_w)),
+                extrapolate,
+                static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, offset, nc)
+                static_cast<int64_t*>(PyArray_DATA(a_offs)),
+                &nc,
+                wrk.data()
+            );
 
-        // np.asarray(A), np.asarray(offset), int(nc)
-        PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
-        return Py_BuildValue("(NNN)", PyArray_Return(a_A), PyArray_Return(a_offs), py_nc);
+            // np.asarray(A), np.asarray(offset), int(nc)
+            PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
+            return Py_BuildValue("(NNN)", PyArray_Return(a_A), PyArray_Return(a_offs), py_nc);
+        } else {
+            PyArrayObject *a_H1 = (PyArrayObject*)PyArray_EMPTY(2, dims, NPY_DOUBLE, 0);
+            npy_intp dims_H2[2] = {m, k};
+            PyArrayObject *a_H2 = (PyArrayObject*)PyArray_EMPTY(2, dims_H2, NPY_DOUBLE, 0);
+            if ((a_H1 == NULL) || (a_H2 == NULL)) {
+                PyErr_NoMemory();
+                Py_XDECREF(a_H1);
+                Py_XDECREF(a_H2);
+                return NULL;
+            }
+            // heavy lifting happens here
+            fitpack::data_matrix_periodic(
+                static_cast<const double *>(PyArray_DATA(a_x)), m,
+                static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                k,
+                static_cast<const double *>(PyArray_DATA(a_w)),
+                extrapolate,
+                static_cast<double *>(PyArray_DATA(a_A)),     // output: (A, H1, H2, offset, nc)
+                static_cast<double *>(PyArray_DATA(a_H1)),
+                static_cast<double *>(PyArray_DATA(a_H2)),
+                static_cast<int64_t*>(PyArray_DATA(a_offs)),
+                &nc,
+                wrk.data()
+            );
+
+            // np.asarray(A), np.asarray(offset), int(nc)
+            PyObject *py_nc = PyLong_FromSsize_t(static_cast<Py_ssize_t>(nc));
+            return Py_BuildValue("(NNNNN)", PyArray_Return(a_A), PyArray_Return(a_H1),
+                PyArray_Return(a_H2), PyArray_Return(a_offs), py_nc);
+        }
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+}
+
+/*
+ * def _get_residual_p0(const double[::1] y,
+ *                      const double[::1] w):
+ */
+static PyObject*
+py_get_residual_p0(PyObject *self, PyObject *args)
+{
+    PyObject *py_y = NULL, *py_w = NULL;
+
+    if(!PyArg_ParseTuple(args, "OO", &py_y, &py_w)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_y, 2, NPY_DOUBLE) &&
+          check_array(py_w, 1, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_w = (PyArrayObject *)py_w;
+
+    // sanity check sizes
+    if (PyArray_DIM(a_w, 0) != PyArray_DIM(a_y, 0)) {
+        std::string msg = ("len(w) = " + std::to_string(PyArray_DIM(a_w, 0)) + " != " +
+                           "len(y) = " + std::to_string(PyArray_DIM(a_y, 0)));
+        PyErr_SetString(PyExc_ValueError, msg.c_str());
+        return NULL;
+    }
+
+    // allocate temp and output arrays
+    npy_intp m = PyArray_DIM(a_y, 0);
+
+    try {
+        // heavy lifting happens here
+        double fp0 = fitpack::get_residual_p0(
+            static_cast<const double *>(PyArray_DATA(a_y)),
+            static_cast<const double *>(PyArray_DATA(a_w)),
+            m);
+
+        return PyFloat_FromDouble(fp0);
     }
     catch (const std::exception& e) {
         PyErr_SetString(PyExc_RuntimeError, e.what());
@@ -649,7 +1049,7 @@ py_evaluate_all_bspl(PyObject* self, PyObject* args)
 }
 
 
-static char doc_find_interval[] = 
+static char doc_find_interval[] =
     "Find an interval such that t[interval] <= xval < t[interval+1]. \n"
     "\n"
     "Uses a linear search with locality, see fitpack's splev. \n"
@@ -1019,16 +1419,29 @@ py_coloc_nd(PyObject *self, PyObject *args)
 /////////////////////////////////////
 
 static PyMethodDef DierckxMethods[] = {
-    /* FITPACK replacement helpers*/
-    {"fpknot", py_fpknot, METH_VARARGS, 
+    //...
+    {"fpknot", py_fpknot, METH_VARARGS,
      "fpknot replacement"},
     {"fpback", py_fpback, METH_VARARGS,
      "backsubstitution, triangular matrix"},
+    {"fpbacp", py_fpbacp, METH_VARARGS,
+     "backsubstitution for periodic splines, triangular matrix"},
     {"qr_reduce", (PyCFunction)py_qr_reduce, METH_VARARGS | METH_KEYWORDS,
      "row-by-row QR triangularization"},
+    {"qr_reduce_periodic", (PyCFunction)py_qr_reduce_periodic, METH_VARARGS | METH_KEYWORDS,
+     "row-by-row QR triangularization for periodic splines"},
+    {"qr_reduce_augmented_matrices", (PyCFunction)py_qr_reduce_augmented_matrices, METH_VARARGS | METH_KEYWORDS,
+     "row-by-row QR triangularization of augmented matrices for periodic splines"},
+    {"init_agumented_matrices", (PyCFunction)py_init_agumented_matrices, METH_VARARGS | METH_KEYWORDS,
+    "Initialise augmented matrices for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,
      "(m, k+1) array of non-zero b-splines"},
-    /* BSpline helpers */
+    {"get_residual_p0", py_get_residual_p0, METH_VARARGS,
+     "Computes residual for periodic splines with p=0"},
+    {"_coloc", py_coloc, METH_VARARGS,
+      doc_coloc},
+    {"_norm_eq_lsq", py_norm_eq_lsq, METH_VARARGS,
+     doc_norm_eq_lsq},
     {"evaluate_spline", py_evaluate_spline, METH_VARARGS,
      doc_evaluate_spline},
     {"evaluate_all_bspl", py_evaluate_all_bspl, METH_VARARGS,
