@@ -55,14 +55,14 @@ def _get_residuals(x, y, t, k, w, periodic=False, get_fp=False):
     #         * For 2D (parametric=True), the summation is actually how the
     #           'residuals' are defined, see Eq. (42) in Dierckx1982
     #           (the reference is in the docstring of `class F`) below.
-    if get_fp:
+    if get_fp and periodic:
         _, _, c, fp = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, get_fp=True)
     else:
         _, _, c = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     c = np.ascontiguousarray(c)
     spl = BSpline(t, c, k)
     residuals = _compute_residuals(w2, spl(x), y)
-    if get_fp:
+    if get_fp and periodic:
         return residuals, fp
     else:
         return residuals
@@ -287,8 +287,10 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         yield t
 
         # construct the LSQ spline with this set of knots
-        residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
-        if not periodic:
+        if periodic:
+            residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
+        else:
+            residuals = _get_residuals(x, y, t, k, w=w)
             fp = residuals.sum()
         fpms = fp - s
 
