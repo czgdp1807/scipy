@@ -1367,7 +1367,7 @@ def _make_periodic_spline(x, y, t, k, axis):
 
 
 def make_interp_spline(x, y, k=3, t=None, bc_type=None, axis=0,
-                       check_finite=True, periodic=False):
+                       check_finite=True):
     """Create an interpolating B-spline with specified degree and boundary conditions.
 
     Parameters
