@@ -3383,7 +3383,7 @@ class TestMakeSplrepBase:
             a, b = 0, 2*np.pi
             x = np.linspace(a, b, m)    # nodes
             y  = np.sin(x)
-            k = 3
+            k = [1, 2, 3, 4, 5, 6]
             s = 1.7e-4
 
             return x, y, k, s, []
@@ -3452,8 +3452,7 @@ class TestMakeSplrepBase:
             # len(x) != len(y)
             make_splrep(np.arange(8), np.arange(9), s=0.1, periodic=self.periodic)
 
-    def test_with_knots(self):
-        x, y, k, s, _ = self._get_xykt()
+    def _test_with_knots(self, x, y, k, s):
         t = list(generate_knots(x, y, k=k, s=s, periodic=self.periodic))[-1]
 
         spl_auto = make_splrep(x, y, k=k, s=s, periodic=self.periodic)
@@ -3463,15 +3462,31 @@ class TestMakeSplrepBase:
         xp_assert_close(spl_auto.c, spl_t.c, atol=1e-15)
         assert spl_auto.k == spl_t.k
 
-    def test_default_s(self):
-        x, y, _, _, _ = self._get_xykt()
-        spl = make_splrep(x, y, k=3, periodic=self.periodic)
-        if self.periodic:
-            spl_i = make_interp_spline(x, y, k=3, bc_type='periodic')
+    def test_with_knots(self):
+        x, y, k, s, _ = self._get_xykt()
+
+        if isinstance(k, list):
+            for k_ in k:
+                self._test_with_knots(x, y, k_, s)
         else:
-            spl_i = make_interp_spline(x, y, k=3)
+            self._test_with_knots(x, y, k, s)
+
+    def _test_default_s(self, x, y, k):
+        spl = make_splrep(x, y, k=k, periodic=self.periodic)
+        if self.periodic:
+            spl_i = make_interp_spline(x, y, k=k, bc_type='periodic')
+        else:
+            spl_i = make_interp_spline(x, y, k=k)
 
         xp_assert_close(spl.c, spl_i.c, atol=1e-15)
+
+    def test_default_s(self):
+        x, y, k, _, _ = self._get_xykt()
+        if isinstance(k, list):
+            for k_ in k:
+                self._test_default_s(x, y, k_)
+        else:
+            self._test_default_s(x, y, k)
 
     @pytest.mark.thread_unsafe
     def test_s_too_small(self):
@@ -3492,9 +3507,10 @@ class TestMakeSplrepBase:
             xp_assert_close(np.r_[spl.c, [0]*(spl.k+1)],
                             tck[1], atol=5e-13)
 
-    def test_shape(self):
+    @pytest.mark.parametrize("k", [1, 2, 3])
+    def test_shape(self, k):
         # make sure coefficients have the right shape (not extra dims)
-        n, k = 10, 3
+        n = 10
         if self.periodic:
             x = np.linspace(0, 2*np.pi, n)
             y = np.cos(x)
@@ -3593,23 +3609,24 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
 
     periodic = True
 
-    def test_no_internal_knots(self):
+    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
+    def test_no_internal_knots(self, k):
         # should not fail if there are no internal knots
         x = np.linspace(0, 10, 10)    # nodes
         y = np.ones((10,))
-        k = 3
 
-        spl = make_splrep(x, y, k=3, s=1, periodic=True)
+        spl = make_splrep(x, y, k=k, s=1, periodic=True)
         assert spl.t.shape[0] == 2*(k+1)
 
-    def test_s0_vs_not(self):
+    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
+    def test_s0_vs_not(self, k):
         # check that the shapes are consistent
-        n, k = 10, 3
+        n = 10
         x = np.linspace(0, 2*np.pi, n)
         y = np.sin(x) + np.cos(x)
 
-        spl_0 = make_splrep(x, y, k=3, s=0, periodic=True)
-        spl_1 = make_splrep(x, y, k=3, s=1, periodic=True)
+        spl_0 = make_splrep(x, y, k=k, s=0, periodic=True)
+        spl_1 = make_splrep(x, y, k=k, s=1, periodic=True)
 
         assert spl_0.c.ndim == 1
         assert spl_1.c.ndim == 1
