@@ -1856,7 +1856,7 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
 # LSQ spline helpers #
 ######################
 
-def _lsq_solve_qr(x, y, t, k, w):
+def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False, get_fp=False):
     """Solve for the LSQ spline coeffs given x, y and knots.
 
     `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
@@ -1866,11 +1866,30 @@ def _lsq_solve_qr(x, y, t, k, w):
     assert y.ndim == 2
 
     y_w = y * w[:, None]
-    A, offset, nc = _dierckx.data_matrix(x, t, k, w)
-    _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
-    c = _dierckx.fpback(A, nc, y_w)
-
-    return A, y_w, c
+    if not periodic:
+        A, offset, nc = _dierckx.data_matrix(x, t, k, w)
+        _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
+        c = _dierckx.fpback(A, nc, y_w)
+        return A, y_w, c
+    else:
+        R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
+        assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
+        if solve_for_p:
+            A1, A2, Z, p = _dierckx.qr_reduce_periodic(
+                R, H1, H2, offset, nc, y_w, k,
+                len(t), True
+            )         # modifies arguments in-place
+        else:
+            A1, A2, Z, fp = _dierckx.qr_reduce_periodic(
+                R, H1, H2, offset, nc, y_w, k,
+                len(t), False, True
+            )         # modifies arguments in-place
+        c = _dierckx.fpbacp(A1, A2, Z, k, k, len(t))
+        if solve_for_p:
+            return (R, A1, A2, Z), y_w, c, p
+        if get_fp:
+            return R, y_w, c, fp
+        return R, y_w, c
 
 
 #############################
@@ -2124,7 +2143,7 @@ def _compute_optimal_gcv_parameter(X, wE, y, w):
             else:
                 raise ValueError(f"Unable to find minimum of the GCV "
                                  f"function: {gcv_est.message}")
-        return gcv_est 
+        return gcv_est
     else:
         # trailing dims must have been flattened already.
         raise RuntimeError("Internal error. Please report it to scipy developers.")
