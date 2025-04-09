@@ -144,6 +144,10 @@ def _validate_inputs(x, y, w, k, s, xb, xe, parametric, periodic=False):
     if xe is None:
         xe = max(x)
 
+    if periodic and not np.allclose(y[0], y[-1], atol=1e-15):
+        raise ValueError("First and last points does not match while "
+                         "periodic case expected")
+
     return x, y, w, k, s, xb, xe
 
 
