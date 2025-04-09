@@ -266,6 +266,17 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
         nmax = m + 2*k  # the number of knots for the spline interpolation
 
+    per = xe - xb
+    fpold = _dierckx.get_residual_p0(y, w)
+    if periodic:
+        if fpold - s < acc or nmax == nmin:
+            t = np.zeros(nmin, dtype=float)
+            for i in range(0, k + 1):
+                t[i] = x[0] - (k - i) * per
+                t[i + k + 1] = x[m - 1] + i * per
+            yield t
+            return
+
     # start from no internal knots
     if not periodic:
         t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
@@ -275,13 +286,11 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
         nplus = 1
     n = t.shape[0]
     fp = 0.0
-    fpold = _dierckx.get_residual_p0(y, w)
 
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
     for iter in range(m):
         if periodic:
-            per = xe - xb
             n = t.shape[0]
             t[k] = xb
             t[n - k - 1] = xe

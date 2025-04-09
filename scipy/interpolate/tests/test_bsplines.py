@@ -3593,17 +3593,14 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
 
     periodic = True
 
-    # TODO: To be fixed
-    # def test_with_constant_function(self):
-    #     # should not fail if there are no internal knots
-    #     m = 10
-    #     a, b = 0, 10
-    #     x = np.linspace(a, b, m)    # nodes
-    #     y = np.ones((m,))
-    #     k = 3
+    def test_no_internal_knots(self):
+        # should not fail if there are no internal knots
+        x = np.linspace(0, 10, 10)    # nodes
+        y = np.ones((10,))
+        k = 3
 
-    #     spl = make_splrep(x, y, k=k, s=1, periodic=True)
-    #     assert spl.t.shape[0] == 2*(k+1)
+        spl = make_splrep(x, y, k=3, s=1, periodic=True)
+        assert spl.t.shape[0] == 2*(k+1)
 
     def test_s0_vs_not(self):
         # check that the shapes are consistent
