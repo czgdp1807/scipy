@@ -151,7 +151,8 @@ def _validate_inputs(x, y, w, k, s, xb, xe, parametric, periodic=False):
     return x, y, w, k, s, xb, xe
 
 
-def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
+def generate_knots(x, y, *, w=None, xb=None, xe=None,
+                   k=3, s=0, nest=None, periodic=False):
     """Generate knot vectors until the Least SQuares (LSQ) criterion is satified.
 
     Parameters
@@ -240,10 +241,12 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, perio
         periodic=periodic
     )
 
-    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, nest=nest, periodic=periodic)
+    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe,
+                                    k=k, s=s, nest=nest, periodic=periodic)
 
 
-def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None, periodic=False):
+def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
+                         k=3, s=0, nest=None, periodic=False):
 
     acc = s * TOL
     m = x.size    # the number of data points
@@ -301,7 +304,8 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, nest=None,
 
         # construct the LSQ spline with this set of knots
         if periodic:
-            residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
+            residuals, fp = _get_residuals(x, y, t, k, w=w,
+                                           periodic=periodic, get_fp=True)
         else:
             residuals = _get_residuals(x, y, t, k, w=w)
             fp = residuals.sum()
@@ -561,7 +565,8 @@ class F:
         return fp - self.s
 
 class Fperiodic:
-    def __init__(self, x, y, t, k, s, w=None, *, R=None, Y=None, A1=None, A2=None, Z=None):
+    def __init__(self, x, y, t, k, s, w=None, *,
+                 R=None, Y=None, A1=None, A2=None, Z=None):
         self.x = x
         self.y = y
         self.t = t
@@ -615,7 +620,8 @@ class Fperiodic:
         _dierckx.qr_reduce_augmented_matrices(
             G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
 
-        c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]), self.k, self.k + 1, len(self.t))
+        c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
+                            self.k, self.k + 1, len(self.t))
 
         spl = BSpline(self.t, c, self.k)
         residuals = _compute_residuals(self.w[:-1]**2, spl(self.x[:-1]), self.y[:-1])
@@ -761,7 +767,8 @@ def root_rati(f, p0, bracket, acc):
     return Bunch(converged=converged, root=p, iterations=it, ier=ier)
 
 
-def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
+def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
+                      k=3, s=0, t=None, nest=None, periodic=False):
     """Shared infra for make_splrep and make_splprep.
     """
     acc = s * TOL
@@ -781,7 +788,8 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
             raise ValueError("Either supply `t` or `nest`.")
 
     if t is None:
-        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe, nest=nest, periodic=periodic)
+        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe,
+                                   nest=nest, periodic=periodic)
         t = list(gen)[-1]
     else:
         fpcheck(x, t, k)
@@ -798,7 +806,9 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     solve_for_p = False
     if periodic:
         solve_for_p = True
-        R, Y, _, p = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, solve_for_p=solve_for_p)
+        R, Y, _, p = _lsq_solve_qr(x, y, t, k, w,
+                                   periodic=periodic,
+                                   solve_for_p=solve_for_p)
     else:
         R, Y, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     nc = t.shape[0] -k -1
@@ -848,7 +858,8 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=
     return f.spl
 
 
-def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, periodic=False):
+def make_splrep(x, y, *, w=None, xb=None, xe=None,
+                k=3, s=0, t=None, nest=None, periodic=False):
     r"""Create a smoothing B-spline function with bounded error, minimizing derivative jumps.
 
     Given the set of data points ``(x[i], y[i])``, determine a smooth spline
@@ -974,9 +985,12 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None, k=3, s=0, t=None, nest=None, 
             return make_interp_spline(x, y, k=k, bc_type='periodic')
         return make_interp_spline(x, y, k=k)
 
-    x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe, parametric=False, periodic=periodic)
+    x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe,
+                                             parametric=False, periodic=periodic)
 
-    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe, k=k, s=s, t=t, nest=nest, periodic=periodic)
+    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe,
+                            k=k, s=s, t=t, nest=nest,
+                            periodic=periodic)
 
     # postprocess: squeeze out the last dimension: was added to simplify the internals.
     spl.c = spl.c[:, 0]
