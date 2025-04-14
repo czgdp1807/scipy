@@ -609,7 +609,8 @@ class Fperiodic:
         if ((A1 is None or A2 is None or Z is None) or
             (R is None and Y is None)):
             # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L171-L215
-            # The computation in the above link is performed for a given set of knots i.e., t vector
+            # The computation in the above link is performed for a
+            # given set of knots i.e., t vector
             (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
                 x, y, t, k, w, periodic=True, solve_for_p=True)
 
