@@ -272,23 +272,26 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
 {
     PyObject *py_a = NULL, *py_h1 = NULL, *py_h2 = NULL, *py_offs = NULL, *py_y = NULL;
     Py_ssize_t nc;
-    int k;
+    Py_ssize_t py_k;
     Py_ssize_t len_t;
     int init_p = false; // Default
     double p = 0.0;
     bool get_fp = false; // Default
     double fp = 0.0;
+    int k;
 
     // XXX: if the overhead is large, flip back to positional only arguments
     const char *kwlist[] = {"a", "h1", "h2", "offset",
                             "nc", "y", "k", "len_t",
                             "init_p", "get_fp", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOin|pp", const_cast<char **>(kwlist),
-                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &k, &len_t,
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOnOnn|pp", const_cast<char **>(kwlist),
+                                    &py_a, &py_h1, &py_h2, &py_offs, &nc, &py_y, &py_k, &len_t,
                                     &init_p, &get_fp)) {
         return NULL;
     }
+
+    k = py_k;
 
     if (!(check_array(py_a, 2, NPY_DOUBLE) &&
           check_array(py_h1, 2, NPY_DOUBLE) &&
