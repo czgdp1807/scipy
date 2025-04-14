@@ -175,35 +175,9 @@ py_fpbacp(PyObject* self, PyObject *args)
 
     // check consistency of array sizes
     Py_ssize_t A1_dim1 = PyArray_DIM(a_A1, 0);
-    Py_ssize_t A1_dim2 = PyArray_DIM(a_A1, 1);
     Py_ssize_t A2_dim1 = PyArray_DIM(a_A2, 0);
-    Py_ssize_t A2_dim2 = PyArray_DIM(a_A2, 1);
-    Py_ssize_t Z_dim = PyArray_DIM(a_Z, 0);
 
     int64_t nc = len_t - k - 1;
-
-    // if (A1_dim1 != nc || A1_dim2 != k + 1) {
-    //     std::string msg = ("A1.shape = (" +
-    //         std::to_string(A1_dim1) + ", " + std::to_string(A1_dim2) + ") != (" +
-    //         std::to_string(nc) + ", " + std::to_string((k + 1)) + ")");
-    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
-    //     return NULL;
-    // }
-
-    // if (A2_dim1 != nc - k || A2_dim2 != k) {
-    //     std::string msg = ("A2.shape = (" +
-    //         std::to_string(A2_dim1) + ", " + std::to_string(A2_dim2) + ") != (" +
-    //         std::to_string((nc - k)) + ", " + std::to_string(k) + ")");
-    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
-    //     return NULL;
-    // }
-
-    // if (Z_dim != nc) {
-    //     std::string msg = ("Z.shape = (" +
-    //         std::to_string(Z_dim) + ",) != (" + std::to_string(nc) + ",)");
-    //     PyErr_SetString(PyExc_ValueError, msg.c_str());
-    //     return NULL;
-    // }
 
     // allocate the output buffer
     npy_intp dims[2] = {nc, 1};
