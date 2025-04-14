@@ -448,12 +448,12 @@ py_qr_reduce_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs
 
 
 /*
- * def _init_agumented_matrices(double[:, ::1] a1, double[:, ::1] a2,     # A packed
+ * def _init_augmented_matrices(double[:, ::1] a1, double[:, ::1] a2,     # A packed
                                 ssize_t[::1] b, int64_t len_t, int k
  * ):
  */
 static PyObject*
-py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
+py_init_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
 {
     PyObject *py_a1 = NULL, *py_a2 = NULL, *py_b = NULL;
     int k;
@@ -1436,7 +1436,7 @@ static PyMethodDef DierckxMethods[] = {
      "row-by-row QR triangularization for periodic splines"},
     {"qr_reduce_augmented_matrices", (PyCFunction)py_qr_reduce_augmented_matrices, METH_VARARGS | METH_KEYWORDS,
      "row-by-row QR triangularization of augmented matrices for periodic splines"},
-    {"init_agumented_matrices", (PyCFunction)py_init_agumented_matrices, METH_VARARGS | METH_KEYWORDS,
+    {"init_augmented_matrices", (PyCFunction)py_init_augmented_matrices, METH_VARARGS | METH_KEYWORDS,
     "Initialise augmented matrices for periodic splines"},
     {"data_matrix", py_data_matrix, METH_VARARGS,
      "(m, k+1) array of non-zero b-splines"},

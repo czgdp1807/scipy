@@ -205,7 +205,7 @@ void qr_reduce_augmented_matrices(
     double* cptr, double* offsetptr,
     int k, int64_t len_t);
 
-void init_agumented_matrices(
+void init_augmented_matrices(
     double *a1ptr, double *a2ptr, double *bptr,
     int k, int64_t len_t,
     double *g1ptr, double *g2ptr,
