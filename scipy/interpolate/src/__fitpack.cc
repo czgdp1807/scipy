@@ -171,6 +171,11 @@ data_matrix( /* inputs */
     *nc = len_t - k - 1;
 }
 
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L181-L195
+// and
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L221-L238
+// For given set of knots, computes H1 and H2 for all the data points except the last.
+// Check the above link for semantics of H1 and H2.
 void
 data_matrix_periodic( /* inputs */
             const double *xptr, int64_t m,      // x, shape (m,)
@@ -347,6 +352,15 @@ qr_reduce(double *aptr, const int64_t m, const int64_t nz, // a(m, nz), packed
 /*
     Solve the LSQ problem ||y - A@c||^2 via QR factorization
     for periodic splines.
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L197-L215
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L293-L310
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L239-L288
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L407-L427
+
+    See each reference to Fortran code above the corresponding C++ code written below.
 */
 void
 qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1(m, nz), h2(m, nz) packed
@@ -391,6 +405,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
         int64_t ij;
         if (l5 >= n10) {
 
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L199-L215
             if (jper == 0) {
                 for( int64_t i = 1; i <= n7; i++ ) {
                     for( int64_t j = 1; j <= k; j++ ) {
@@ -411,6 +426,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
                 jper = 1;
             }
 
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L239-L288
             // rotate the new row of the observation matrix into triangle
             // by givens transformations.
             if (n10 > 0) {
@@ -483,7 +499,7 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
             }
 
         } else {
-
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L293-L310
             // rotation of the new row of the observation matrix into triangle in case the b-splines
             // nj,k+1(x),j=n7+1,...n-k-1 are all zero at xi.
             int64_t j = l5;
@@ -513,9 +529,11 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
             }
         }
 
+        // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L288
         fp += yi*yi;
     }
 
+    // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L407-L427
     if( init_p ) {
         p = 0.0;
         int64_t l = n7;
@@ -537,6 +555,9 @@ qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1
     }
 }
 
+
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
+// Performs QR decomposition of augmented matrices with H1 and H2.
 void qr_reduce_augmented_matrices(
     double* g1ptr, double* g2ptr,
     double* h1ptr, double* h2ptr,
@@ -550,6 +571,7 @@ void qr_reduce_augmented_matrices(
     auto c = RealArray2D(cptr, len_t - k - 1, 1);
     auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
 
+    // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
     for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
         double yi = 0.0;
         for( int64_t j = offset(it - 1); j <= len_t - 3*k - 2; j++ ) {
@@ -1222,7 +1244,10 @@ _coloc_nd(/* inputs */
     return 0;
 }
 
-
+/*
+Computes fp0 for constant function.
+Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
+*/
 double
 get_residual_p0(/* inputs */
             const double *yptr,      // y, shape (m, 1)
@@ -1246,7 +1271,10 @@ get_residual_p0(/* inputs */
     return fp0;
 }
 
-void init_agumented_matrices(
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L441-L493
+// Note that H1 and H2 are not multipled by pinv here. It is done in the iterative step just before
+// QR reduction of agumented matrices happens.
+void init_augmented_matrices(
     double *a1ptr, double *a2ptr, double *bptr,
     int k, int64_t len_t,
     double *g1ptr, double *g2ptr,

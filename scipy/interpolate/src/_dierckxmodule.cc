@@ -215,6 +215,7 @@ py_fpbacp(PyObject* self, PyObject *args)
 
     try {
         // heavy lifting happens here
+        // Check __fitpack.cc for implementation details
         fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)), A1_dim1,
                         static_cast<const double *>(PyArray_DATA(a_A2)), A2_dim1,
                         static_cast<const double *>(PyArray_DATA(a_Z)),
@@ -346,6 +347,7 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
 
     try {
         // heavy lifting happens here, *in-place*
+        // Check __fitpack.cc for implementation details
         fitpack::qr_reduce_periodic(
             // a(m, nz), packed
             static_cast<double *>(PyArray_DATA(a_a)),
@@ -425,6 +427,7 @@ py_qr_reduce_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs
 
     try {
         // heavy lifting happens here, *in-place*
+        // Check __fitpack.cc for implementation details
         fitpack::qr_reduce_augmented_matrices(
             static_cast<double *>(PyArray_DATA(a_g1)),
             static_cast<double *>(PyArray_DATA(a_g2)),
@@ -498,7 +501,8 @@ py_init_agumented_matrices(PyObject* self, PyObject *args, PyObject *kwargs)
 
     try {
         // heavy lifting happens here, *in-place*
-        fitpack::init_agumented_matrices(
+        // Check __fitpack.cc for implementation details
+        fitpack::init_augmented_matrices(
             static_cast<double *>(PyArray_DATA(a_a1)),
             static_cast<double *>(PyArray_DATA(a_a2)),
             static_cast<double *>(PyArray_DATA(a_b)),
@@ -607,6 +611,7 @@ py_data_matrix(PyObject *self, PyObject *args)
                 return NULL;
             }
             // heavy lifting happens here
+            // Check __fitpack.cc for implementation details
             fitpack::data_matrix_periodic(
                 static_cast<const double *>(PyArray_DATA(a_x)), m,
                 static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),

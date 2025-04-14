@@ -1872,8 +1872,10 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False, get_fp=False
         c = _dierckx.fpback(A, nc, y_w)
         return A, y_w, c
     else:
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
         assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
         if solve_for_p:
             A1, A2, Z, p = _dierckx.qr_reduce_periodic(
                 R, H1, H2, offset, nc, y_w, k,
@@ -1884,6 +1886,7 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False, get_fp=False
                 R, H1, H2, offset, nc, y_w, k,
                 len(t), False, True
             )         # modifies arguments in-place
+        # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
         c = _dierckx.fpbacp(A1, A2, Z, k, k, len(t))
         if solve_for_p:
             return (R, A1, A2, Z), y_w, c, p

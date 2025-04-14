@@ -254,6 +254,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/_fitpack_impl.py#L260-L263
         if periodic:
             nest = max(m + 2*k, 2*k + 3)
         else:
@@ -266,12 +267,21 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
         nmax = m + k + 1  # the number of knots for the spline interpolation
     else:
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L54
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L61
         nmax = m + 2*k  # the number of knots for the spline interpolation
 
     per = xe - xb
+    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
+    # Computes fp0 for constant function
     fpold = _dierckx.get_residual_p0(y, w)
     if periodic:
+        # For periodic splines, check whether constant function
+        # satisfies accuracy criterion
+        # Also if maximal number of nodes is equal to the minimal
+        # then constant function is the direct solution
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L600-L610
         if fpold - s < acc or nmax == nmin:
             t = np.zeros(nmin, dtype=float)
             for i in range(0, k + 1):
@@ -284,6 +294,8 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
     if not periodic:
         t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
     else:
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L131
+        # For periodic splines initial set of knots is all zeros except (k + 2)-th knot
         t = np.zeros(2*k + 3, dtype=float)
         t[k + 1] = x[(m + 1)//2 - 1]
         nplus = 1
@@ -293,6 +305,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
     for iter in range(m):
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L147-L158
         if periodic:
             n = t.shape[0]
             t[k] = xb
@@ -304,6 +317,9 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
 
         # construct the LSQ spline with this set of knots
         if periodic:
+            # N.B. - Check _lsq_solve_qr which is called
+            # via _get_residuals for logic behind
+            # computation of fp for periodic splines
             residuals, fp = _get_residuals(x, y, t, k, w=w,
                                            periodic=periodic, get_fp=True)
         else:
@@ -564,6 +580,7 @@ class F:
 
         return fp - self.s
 
+# Solver class for f(p) for periodic splines
 class Fperiodic:
     def __init__(self, x, y, t, k, s, w=None, *,
                  R=None, Y=None, A1=None, A2=None, Z=None):
@@ -591,10 +608,15 @@ class Fperiodic:
         # NB: otherwise, must be consistent with x,y & s, but this is not checked
         if ((A1 is None or A2 is None or Z is None) or
             (R is None and Y is None)):
+            # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L171-L215
+            # The computation in the above link is performed for a given set of knots i.e., t vector
             (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
                 x, y, t, k, w, periodic=True, solve_for_p=True)
 
-        G1, G2, H1, H2, offset = _dierckx.init_agumented_matrices(A1, A2, b, len(t), k)
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L441-L493
+        # Note the for H1 and H2, pinv is not multiplied in the initialisation step.
+        # Check __call__ for multiplication of pinv with H1 and H2 respectively
+        G1, G2, H1, H2, offset = _dierckx.init_augmented_matrices(A1, A2, b, len(t), k)
 
         self.G1_ = G1
         self.G2_ = G2
@@ -610,6 +632,7 @@ class Fperiodic:
         H2 = self.H2_.copy()
         Z = self.Z_.copy()
 
+        # pinv multiplied with H1 and H2
         pinv = 1/p
         H1 = H1*pinv
         H2 = H2*pinv
@@ -617,9 +640,11 @@ class Fperiodic:
         c = np.empty((len(self.t) - self.k - 1, 1), dtype=Z.dtype)
         c[:len(self.t) - 2*self.k - 1, 0] = Z[:len(self.t) - 2*self.k - 1]
 
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L498-L534
         _dierckx.qr_reduce_augmented_matrices(
             G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
 
+        # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
         c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
                             self.k, self.k + 1, len(self.t))
 
@@ -777,6 +802,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
     if nest is None:
         # the max number of knots. This is set in _fitpack_impl.py line 274
         # and fitpack.pyf line 198
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/_fitpack_impl.py#L260-L263
         if periodic:
             nest = max(m + 2*k, 2*k + 3)
         else:
@@ -805,6 +831,8 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
     # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L253
     solve_for_p = False
     if periodic:
+        # N.B. - Check _lsq_solve_qr computation
+        # of p for periodic splines
         solve_for_p = True
         R, Y, _, p = _lsq_solve_qr(x, y, t, k, w,
                                    periodic=periodic,
@@ -824,6 +852,9 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
         residuals = _get_residuals(x, y, t, k, w=w)
         fp = residuals.sum()
     else:
+        # N.B. - Check _lsq_solve_qr which is called
+        # via _get_residuals for logic behind
+        # computation of fp for periodic splines
         residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
     fpinf = fp - s
 
@@ -835,6 +866,9 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
     else:
         # Hanldes only y.shape[1] == 1
         assert(y.shape[1] == 1)
+        # f(p=0) is fp for constant function
+        # in case of periodic splines
+        # get_residual_p0 computes the same.
         fp0 = _dierckx.get_residual_p0(y, w)
         fp0 = fp0 - s
 
@@ -908,6 +942,11 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None,
         The actual number of knots returned by this routine may be slightly
         larger than `nest`.
         Default is None (no limit, add up to ``m + k + 1`` knots).
+    periodic : bool, optional
+        If non-zero, data points are considered periodic with period ``x[m-1]`` -
+        ``x[0]`` and a smooth periodic spline approximation is returned. Values of
+        ``y[m-1]`` and ``w[m-1]`` are not used.
+        The default is zero, corresponding to boundary condition 'not-a-knot'.
 
     Returns
     -------
