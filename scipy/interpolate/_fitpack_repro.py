@@ -173,6 +173,26 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None,
         The smoothing factor. Default is ``s = 0``.
     nest : int, optional
         Stop when at least this many knots are placed.
+          ends are equivalent.
+    bc_type : 2-tuple or None
+        Boundary conditions.
+        Default is None, which means choosing the boundary conditions
+        automatically. Otherwise, it must be a length-two tuple where the first
+        element (``deriv_l``) sets the boundary conditions at ``x[0]`` and
+        the second element (``deriv_r``) sets the boundary conditions at
+        ``x[-1]``. Each of these must be an iterable of pairs
+        ``(order, value)`` which gives the values of derivatives of specified
+        orders at the given edge of the interpolation interval.
+        Alternatively, the following string aliases are recognized:
+
+        * ``"clamped"``: The first derivatives at the ends are zero. This is
+           equivalent to ``bc_type=([(1, 0.0)], [(1, 0.0)])``.
+        * ``"natural"``: The second derivatives at ends are zero. This is
+          equivalent to ``bc_type=([(2, 0.0)], [(2, 0.0)])``.
+        * ``"not-a-knot"`` (default): The first and second segments are the
+          same polynomial. This is equivalent to having ``bc_type=None``.
+        * ``"periodic"``: The values and the first ``k-1`` derivatives at the
+          ends are equivalent.
 
     Yields
     ------
@@ -953,6 +973,25 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None,
         ``x[0]`` and a smooth periodic spline approximation is returned. Values of
         ``y[m-1]`` and ``w[m-1]`` are not used.
         The default is zero, corresponding to boundary condition 'not-a-knot'.
+    bc_type : 2-tuple or None
+        Boundary conditions.
+        Default is None, which means choosing the boundary conditions
+        automatically. Otherwise, it must be a length-two tuple where the first
+        element (``deriv_l``) sets the boundary conditions at ``x[0]`` and
+        the second element (``deriv_r``) sets the boundary conditions at
+        ``x[-1]``. Each of these must be an iterable of pairs
+        ``(order, value)`` which gives the values of derivatives of specified
+        orders at the given edge of the interpolation interval.
+        Alternatively, the following string aliases are recognized:
+
+        * ``"clamped"``: The first derivatives at the ends are zero. This is
+           equivalent to ``bc_type=([(1, 0.0)], [(1, 0.0)])``.
+        * ``"natural"``: The second derivatives at ends are zero. This is
+          equivalent to ``bc_type=([(2, 0.0)], [(2, 0.0)])``.
+        * ``"not-a-knot"`` (default): The first and second segments are the
+          same polynomial. This is equivalent to having ``bc_type=None``.
+        * ``"periodic"``: The values and the first ``k-1`` derivatives at the
+          ends are equivalent.
 
     Returns
     -------
