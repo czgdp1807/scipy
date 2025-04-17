@@ -100,7 +100,6 @@ def add_knot(x, t, k, residuals):
 def _validate_inputs(x, y, w, k, s, xb, xe, parametric, periodic=False):
     """Common input validations for generate_knots and make_splrep.
     """
-    # TODO: Add validity checks for periodic inputs
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
 
