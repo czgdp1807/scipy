@@ -1,5 +1,6 @@
 import itertools
 import os
+import sys
 
 import numpy as np
 from scipy._lib._array_api import (
@@ -126,6 +127,9 @@ class TestSmokeTests:
     def test_smoke_splrep_splev(self):
         self.check_1(s=1e-6)
         self.check_1(b=1.5*np.pi)
+
+    @pytest.mark.skipif(sys.maxsize <= 2**32, reason="Segfaults on 32-bit system")
+    def test_smoke_splrep_splev_periodic(self):
         self.check_1(b=1.5*np.pi, xe=2*np.pi, per=1, s=1e-1)
         self.check_1(b=2*np.pi, per=1, s=1e-1)
 
