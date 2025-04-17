@@ -3376,10 +3376,10 @@ class F_dense:
 
 class TestMakeSplrepBase:
 
-    periodic = None
+    bc_type = None
 
     def _get_xykt(self):
-        if self.periodic:
+        if self.bc_type == 'periodic':
             m = 10
             a, b = 0, 2*np.pi
             x = np.linspace(a, b, m)    # nodes
@@ -3403,61 +3403,61 @@ class TestMakeSplrepBase:
         y = np.linspace(0, 10, 12)
         with assert_raises(ValueError):
             # len(x) != len(y)
-            make_splrep(x, y, periodic=self.periodic)
+            make_splrep(x, y, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # 0D inputs
-            make_splrep(1, 2, s=0.1, periodic=self.periodic)
+            make_splrep(1, 2, s=0.1, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # y.ndim > 2
             y = np.ones((x.size, 2, 2, 2))
-            make_splrep(x, y, s=0.1, periodic=self.periodic)
+            make_splrep(x, y, s=0.1, bc_type=self.bc_type)
 
         w = np.ones(12)
         with assert_raises(ValueError):
             # len(weights) != len(x)
-            make_splrep(x, x**3, w=w, s=0.1, periodic=self.periodic)
+            make_splrep(x, x**3, w=w, s=0.1, bc_type=self.bc_type)
 
         w = -np.ones(12)
         with assert_raises(ValueError):
             # w < 0
-            make_splrep(x, x**3, w=w, s=0.1, periodic=self.periodic)
+            make_splrep(x, x**3, w=w, s=0.1, bc_type=self.bc_type)
 
         w = np.ones((x.shape[0], 2))
         with assert_raises(ValueError):
             # w.ndim != 1
-            make_splrep(x, x**3, w=w, s=0.1, periodic=self.periodic)
+            make_splrep(x, x**3, w=w, s=0.1, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # x not ordered
-            make_splrep(x[::-1], x**3, s=0.1, periodic=self.periodic)
+            make_splrep(x[::-1], x**3, s=0.1, bc_type=self.bc_type)
 
         with assert_raises(TypeError):
             # k != int(k)
-            make_splrep(x, x**3, k=2.5, s=0.1, periodic=self.periodic)
+            make_splrep(x, x**3, k=2.5, s=0.1, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # s < 0
-            make_splrep(x, x**3, s=-1, periodic=self.periodic)
+            make_splrep(x, x**3, s=-1, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # nest < 2*k + 2
-            make_splrep(x, x**3, k=3, nest=2, s=0.1, periodic=self.periodic)
+            make_splrep(x, x**3, k=3, nest=2, s=0.1, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # nest not None and s==0
-            make_splrep(x, x**3, s=0, nest=11, periodic=self.periodic)
+            make_splrep(x, x**3, s=0, nest=11, bc_type=self.bc_type)
 
         with assert_raises(ValueError):
             # len(x) != len(y)
-            make_splrep(np.arange(8), np.arange(9), s=0.1, periodic=self.periodic)
+            make_splrep(np.arange(8), np.arange(9), s=0.1, bc_type=self.bc_type)
 
     def _test_with_knots(self, x, y, k, s):
-        t = list(generate_knots(x, y, k=k, s=s, periodic=self.periodic))[-1]
+        t = list(generate_knots(x, y, k=k, s=s, bc_type=self.bc_type))[-1]
 
-        spl_auto = make_splrep(x, y, k=k, s=s, periodic=self.periodic)
-        spl_t = make_splrep(x, y, t=t, k=k, s=s, periodic=self.periodic)
+        spl_auto = make_splrep(x, y, k=k, s=s, bc_type=self.bc_type)
+        spl_t = make_splrep(x, y, t=t, k=k, s=s, bc_type=self.bc_type)
 
         xp_assert_close(spl_auto.t, spl_t.t, atol=1e-15)
         xp_assert_close(spl_auto.c, spl_t.c, atol=1e-15)
@@ -3474,11 +3474,8 @@ class TestMakeSplrepBase:
             self._test_with_knots(x, y, k, s)
 
     def _test_default_s(self, x, y, k):
-        spl = make_splrep(x, y, k=k, periodic=self.periodic)
-        if self.periodic:
-            spl_i = make_interp_spline(x, y, k=k, bc_type='periodic')
-        else:
-            spl_i = make_interp_spline(x, y, k=k)
+        spl = make_splrep(x, y, k=k, bc_type=self.bc_type)
+        spl_i = make_interp_spline(x, y, k=k, bc_type=self.bc_type)
 
         xp_assert_close(spl.c, spl_i.c, atol=1e-15)
 
@@ -3494,7 +3491,7 @@ class TestMakeSplrepBase:
     @pytest.mark.skipif(sys.maxsize <= 2**32, reason="Segfaults on 32-bit system")
     def test_s_too_small(self):
         # both splrep and make_splrep warn that "s too small": ier=2
-        if self.periodic:
+        if self.bc_type == 'periodic':
             x = np.linspace(0, 2*np.pi, 14)
             y = np.sin(x)
         else:
@@ -3503,8 +3500,8 @@ class TestMakeSplrepBase:
 
         with suppress_warnings() as sup:
             r = sup.record(RuntimeWarning)
-            tck = splrep(x, y, k=3, s=1e-50, per=self.periodic)
-            spl = make_splrep(x, y, k=3, s=1e-50, periodic=self.periodic)
+            tck = splrep(x, y, k=3, s=1e-50, per=(self.bc_type == 'periodic'))
+            spl = make_splrep(x, y, k=3, s=1e-50, bc_type=self.bc_type)
             assert len(r) == 2
             xp_assert_close(spl.t, tck[0])
             xp_assert_close(np.r_[spl.c, [0]*(spl.k+1)],
@@ -3515,26 +3512,24 @@ class TestMakeSplrepBase:
     def test_shape(self, k):
         # make sure coefficients have the right shape (not extra dims)
         n = 10
-        if self.periodic:
+        if self.bc_type == 'periodic':
             x = np.linspace(0, 2*np.pi, n)
             y = np.cos(x)
         else:
             x = np.arange(n)
             y = x**3
 
-        spl = make_splrep(x, y, k=k, periodic=self.periodic)
-        spl_1 = make_splrep(x, y, k=k, s=1e-5, periodic=self.periodic)
+        spl = make_splrep(x, y, k=k, bc_type=self.bc_type)
+        spl_1 = make_splrep(x, y, k=k, s=1e-5, bc_type=self.bc_type)
 
         assert spl.c.ndim == 1
         assert spl_1.c.ndim == 1
 
         # force the general code path, not shortcuts
-        spl_2 = make_splrep(x, y + 1/(1+y), k=k, s=1e-5, periodic=self.periodic)
+        spl_2 = make_splrep(x, y + 1/(1+y), k=k, s=1e-5, bc_type=self.bc_type)
         assert spl_2.c.ndim == 1
 
 class TestMakeSplrep(TestMakeSplrepBase):
-
-    periodic = False
 
     def test_fitpack_F(self):
         # test an implementation detail: banded/packed linalg vs full matrices
@@ -3611,7 +3606,7 @@ class TestMakeSplrep(TestMakeSplrepBase):
 
 class TestMakeSplrepPeriodic(TestMakeSplrepBase):
 
-    periodic = True
+    bc_type = 'periodic'
 
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
     def test_no_internal_knots(self, k):
@@ -3619,7 +3614,7 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
         x = np.linspace(0, 10, 10)    # nodes
         y = np.ones((10,))
 
-        spl = make_splrep(x, y, k=k, s=1, periodic=True)
+        spl = make_splrep(x, y, k=k, s=1, bc_type=self.bc_type)
         assert spl.t.shape[0] == 2*(k+1)
 
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
@@ -3630,8 +3625,8 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
         x = np.linspace(0, 2*np.pi, n)
         y = np.sin(x) + np.cos(x)
 
-        spl_0 = make_splrep(x, y, k=k, s=0, periodic=True)
-        spl_1 = make_splrep(x, y, k=k, s=1, periodic=True)
+        spl_0 = make_splrep(x, y, k=k, s=0, bc_type=self.bc_type)
+        spl_1 = make_splrep(x, y, k=k, s=1, bc_type=self.bc_type)
 
         assert spl_0.c.ndim == 1
         assert spl_1.c.ndim == 1
@@ -3645,15 +3640,15 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
         x = np.linspace(a, b, N + 1)    # nodes
 
         y = np.cos(x)
-        spl = make_splrep(x, y, s=1e-8, periodic=True)
+        spl = make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
         xp_assert_close(splev(x, spl), y, atol=1e-5, rtol=1e-4)
 
         y = np.sin(x) + np.cos(x)
-        spl = make_splrep(x, y, s=1e-12, periodic=True)
+        spl = make_splrep(x, y, s=1e-12, bc_type=self.bc_type)
         xp_assert_close(splev(x, spl), y, atol=1e-5, rtol=1e-6)
 
         y = 5*np.sin(x) + np.cos(x)*3
-        spl = make_splrep(x, y, s=1e-8, periodic=True)
+        spl = make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
         xp_assert_close(splev(x, spl), y, atol=1e-5, rtol=1e-4)
 
     def test_periodic_with_non_periodic_data(self):
@@ -3663,7 +3658,7 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
 
         y = np.exp(x)
         with assert_raises(ValueError):
-            make_splrep(x, y, s=1e-8, periodic=True)
+            make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
 
 
 class TestMakeSplprep:
