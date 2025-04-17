@@ -3611,8 +3611,8 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
     def test_no_internal_knots(self, k):
         # should not fail if there are no internal knots
-        x = np.linspace(0, 10, 10)    # nodes
-        y = np.ones((10,))
+        x = np.linspace(0, 10, 11)    # nodes
+        y = np.ones((11,))
 
         spl = make_splrep(x, y, k=k, s=1, bc_type=self.bc_type)
         assert spl.t.shape[0] == 2*(k+1)
