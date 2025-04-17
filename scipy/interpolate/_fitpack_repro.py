@@ -152,7 +152,7 @@ def _validate_inputs(x, y, w, k, s, xb, xe, parametric, periodic=False):
 
 
 def generate_knots(x, y, *, w=None, xb=None, xe=None,
-                   k=3, s=0, nest=None, periodic=False):
+                   k=3, s=0, nest=None, bc_type=None):
     """Generate knot vectors until the Least SQuares (LSQ) criterion is satified.
 
     Parameters
@@ -229,10 +229,15 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None,
     .. versionadded:: 1.15.0
 
     """
+    periodic = bc_type == 'periodic'
+
     if s == 0:
         if nest is not None or w is not None:
             raise ValueError("s == 0 is interpolation only")
-        t = _not_a_knot(x, k)
+        if periodic:
+            t = _periodic_knots(x, k)
+        else:
+            t = _not_a_knot(x, k)
         yield t
         return
 
@@ -894,7 +899,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
 
 
 def make_splrep(x, y, *, w=None, xb=None, xe=None,
-                k=3, s=0, t=None, nest=None, periodic=False):
+                k=3, s=0, t=None, nest=None, bc_type=None):
     r"""Create a smoothing B-spline function with bounded error, minimizing derivative jumps.
 
     Given the set of data points ``(x[i], y[i])``, determine a smooth spline
@@ -1021,9 +1026,9 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None,
     if s == 0:
         if t is not None or w is not None or nest is not None:
             raise ValueError("s==0 is for interpolation only")
-        if periodic:
-            return make_interp_spline(x, y, k=k, bc_type='periodic')
-        return make_interp_spline(x, y, k=k)
+        return make_interp_spline(x, y, k=k, bc_type=bc_type)
+
+    periodic = (bc_type == 'periodic')
 
     x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe,
                                              parametric=False, periodic=periodic)
