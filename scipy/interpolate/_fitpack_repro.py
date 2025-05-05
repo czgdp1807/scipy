@@ -41,9 +41,6 @@ MAXIT = 20
 
 
 def _get_residuals(x, y, t, k, w, periodic=False):
-    # FITPACK has (w*(spl(x)-y))**2; make_lsq_spline has w*(spl(x)-y)**2
-    w2 = w**2
-
     # inline the relevant part of
     # >>> spl = make_lsq_spline(x, y, w=w2, t=t, k=k)
     # NB:
