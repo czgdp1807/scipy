@@ -23,7 +23,7 @@ import numpy as np
 
 from ._bsplines import (
     _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr,
-    _periodic_knots
+    _periodic_knots, _compute_residuals
 )
 from . import _dierckx      # type: ignore[attr-defined]
 
@@ -40,7 +40,7 @@ TOL = 0.001
 MAXIT = 20
 
 
-def _get_residuals(x, y, t, k, w, periodic=False, get_fp=False):
+def _get_residuals(x, y, t, k, w, periodic=False):
     # FITPACK has (w*(spl(x)-y))**2; make_lsq_spline has w*(spl(x)-y)**2
     w2 = w**2
 
@@ -55,22 +55,8 @@ def _get_residuals(x, y, t, k, w, periodic=False, get_fp=False):
     #         * For 2D (parametric=True), the summation is actually how the
     #           'residuals' are defined, see Eq. (42) in Dierckx1982
     #           (the reference is in the docstring of `class F`) below.
-    if get_fp and periodic:
-        _, _, c, fp = _lsq_solve_qr(x, y, t, k, w, periodic=periodic, get_fp=True)
-    else:
-        _, _, c = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
-    c = np.ascontiguousarray(c)
-    spl = BSpline(t, c, k)
-    residuals = _compute_residuals(w2, spl(x), y)
-    if get_fp and periodic:
-        return residuals, fp
-    else:
-        return residuals
-
-
-def _compute_residuals(w2, splx, y):
-    delta = ((splx - y)**2).sum(axis=1)
-    return w2 * delta
+    _, _, _, fp, residuals = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
+    return residuals, fp
 
 
 def add_knot(x, t, k, residuals):
