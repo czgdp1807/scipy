@@ -311,6 +311,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
         nplus = 1
     n = t.shape[0]
     fp = 0.0
+    fpold = 0.0
 
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
@@ -329,6 +330,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
         # N.B. - Check _lsq_solve_qr which is called
         # via _get_residuals for logic behind
         # computation of fp for periodic splines
+        fpold = fp
         residuals, fp = _get_residuals(x, y, t, k, w=w,
                                         periodic=periodic)
         fpms = fp - s
@@ -374,7 +376,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
 
             # recompute if needed
             if j < nplus - 1:
-                residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic)
+                residuals, _ = _get_residuals(x, y, t, k, w=w, periodic=periodic)
 
         fpold = fp
     # this should never be reached
