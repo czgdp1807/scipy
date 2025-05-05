@@ -326,15 +326,11 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
         yield t
 
         # construct the LSQ spline with this set of knots
-        if periodic:
-            # N.B. - Check _lsq_solve_qr which is called
-            # via _get_residuals for logic behind
-            # computation of fp for periodic splines
-            residuals, fp = _get_residuals(x, y, t, k, w=w,
-                                           periodic=periodic, get_fp=True)
-        else:
-            residuals = _get_residuals(x, y, t, k, w=w)
-            fp = residuals.sum()
+        # N.B. - Check _lsq_solve_qr which is called
+        # via _get_residuals for logic behind
+        # computation of fp for periodic splines
+        residuals, fp = _get_residuals(x, y, t, k, w=w,
+                                        periodic=periodic)
         fpms = fp - s
 
         # c  test whether the approximation sinf(x) is an acceptable solution.
@@ -378,7 +374,7 @@ def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
 
             # recompute if needed
             if j < nplus - 1:
-                residuals = _get_residuals(x, y, t, k, w=w)
+                residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic)
 
         fpold = fp
     # this should never be reached
@@ -538,7 +534,7 @@ class F:
         # the QR factorization of the data matrix, if not provided
         # NB: otherwise, must be consistent with x,y & s, but this is not checked
         if R is None and Y is None:
-            R, Y, _ = _lsq_solve_qr(x, y, t, k, w)
+            R, Y, _, _, _ = _lsq_solve_qr(x, y, t, k, w)
 
         # prepare to combine R and the discontinuity matrix (AB); also r.h.s. (YY)
         # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L269
@@ -621,7 +617,7 @@ class Fperiodic:
             # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L171-L215
             # The computation in the above link is performed for a
             # given set of knots i.e., t vector
-            (R, A1, A2, Z), _, _, _ = _lsq_solve_qr(
+            (R, A1, A2, Z), _, _, _, _ = _lsq_solve_qr(
                 x, y, t, k, w, periodic=True, solve_for_p=True)
 
         # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L441-L493
@@ -833,7 +829,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
 
     if t.shape[0] == 2 * (k + 1):
         # nothing to optimize
-        _, _, c = _lsq_solve_qr(x, y, t, k, w)
+        _, _, c, _, _ = _lsq_solve_qr(x, y, t, k, w)
         return BSpline(t, c, k)
 
     ### solve ###
@@ -845,11 +841,11 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
         # N.B. - Check _lsq_solve_qr computation
         # of p for periodic splines
         solve_for_p = True
-        R, Y, _, p = _lsq_solve_qr(x, y, t, k, w,
+        R, Y, _, p, _ = _lsq_solve_qr(x, y, t, k, w,
                                    periodic=periodic,
                                    solve_for_p=solve_for_p)
     else:
-        R, Y, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
+        R, Y, _, _, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     nc = t.shape[0] -k -1
     if not periodic:
         p = nc / R[:, 0].sum()
@@ -859,20 +855,15 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
     # ### bespoke solver ####
     # initial conditions
     # f(p=inf) : LSQ spline with knots t   (XXX: reuse R, c)
-    if not periodic:
-        residuals = _get_residuals(x, y, t, k, w=w)
-        fp = residuals.sum()
-    else:
-        # N.B. - Check _lsq_solve_qr which is called
-        # via _get_residuals for logic behind
-        # computation of fp for periodic splines
-        residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic, get_fp=True)
+    # N.B. - Check _lsq_solve_qr which is called
+    # via _get_residuals for logic behind
+    # computation of fp for periodic splines
+    residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic)
     fpinf = fp - s
 
     # f(p=0): LSQ spline without internal knots
     if not periodic:
-        residuals = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
-        fp0 = residuals.sum()
+        _, fp0 = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
         fp0 = fp0 - s
     else:
         # Hanldes only y.shape[1] == 1
