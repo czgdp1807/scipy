@@ -23,7 +23,7 @@ import numpy as np
 
 from ._bsplines import (
     _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr,
-    _periodic_knots, _compute_residuals
+    _periodic_knots
 )
 from . import _dierckx      # type: ignore[attr-defined]
 
@@ -649,7 +649,8 @@ class Fperiodic:
 
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
         c, residuals = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
-                            self.k, self.k + 1, self.x[:-1], self.y[:-1, None], self.t, self.w[:-1])
+                            self.k, self.k + 1, self.x[:-1], self.y[:-1, None],
+                            self.t, self.w[:-1])
         fp = residuals.sum()
 
         spl = BSpline(self.t, c, self.k)

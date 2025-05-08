@@ -1870,9 +1870,6 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
     assert y.ndim == 2
 
     y_w = y * w[:, None]
-    return_values = None
-    fp = None
-    residuals = None
     if not periodic:
         A, offset, nc = _dierckx.data_matrix(x, t, k, w)
         _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
