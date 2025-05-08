@@ -2014,7 +2014,7 @@ class TestGivensQR:
 
         # sign changes are consistent between Q and R:
         c_full = sl.solve(r, qTy)
-        c_banded = _dierckx.fpback(R.a, R.nc, y_)
+        c_banded, _, _ = _dierckx.fpback(R.a, R.nc, x, y_, t, k, np.ones_like(y), y_)
         xp_assert_close(c_full, c_banded[:, 0], atol=5e-13)
 
     def test_py_vs_compiled(self):
@@ -2070,7 +2070,7 @@ class TestGivensQR:
         _dierckx.qr_reduce(A, offset, nc, y)
 
         c = fpback(R, y)
-        cc = _dierckx.fpback(A, nc, y)
+        cc, _, _ = _dierckx.fpback(A, nc, x, y, t, k, np.ones_like(x), y)
 
         xp_assert_close(cc, c, atol=1e-14)
 

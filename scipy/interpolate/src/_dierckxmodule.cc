@@ -93,26 +93,34 @@ py_fpknot(PyObject* self, PyObject *args)
 static PyObject*
 py_fpback(PyObject* self, PyObject *args)
 {
-    PyObject *py_R = NULL, *py_y = NULL;
+    PyObject *py_R = NULL, *py_y = NULL, *py_yw = NULL;
+    PyObject *py_x = NULL, *py_t = NULL, *py_w = NULL;
     Py_ssize_t nc;
+    int k;
+    int extrapolate = 0;   // default is False
 
-    if(!PyArg_ParseTuple(args, "OnO", &py_R, &nc, &py_y)) {
+    if(!PyArg_ParseTuple(args, "OnOOOiOO|p", &py_R, &nc, &py_x, &py_y, &py_t, &k, &py_w, &py_yw, &extrapolate)) {
         return NULL;
     }
 
-    if (!(check_array(py_R, 2, NPY_DOUBLE) && check_array(py_y, 2, NPY_DOUBLE))) {
+    if (!(check_array(py_R, 2, NPY_DOUBLE) && check_array(py_yw, 2, NPY_DOUBLE))) {
         return NULL;
     }
 
     PyArrayObject *a_R = (PyArrayObject *)py_R;
     PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_yw = (PyArrayObject *)py_yw;
+    PyArrayObject *a_x = (PyArrayObject *)py_x;
+    PyArrayObject *a_t = (PyArrayObject *)py_t;
+    PyArrayObject *a_w = (PyArrayObject *)py_w;
 
     // check consistency of array sizes
     Py_ssize_t m = PyArray_DIM(a_R, 0);
+    Py_ssize_t m_ = PyArray_DIM(a_x, 0);
     Py_ssize_t nz = PyArray_DIM(a_R, 1);
 
-    if (PyArray_DIM(a_y, 0) != m) {
-        std::string msg = ("len(y) = " + std::to_string(PyArray_DIM(a_y, 0)) + " != " +
+    if (PyArray_DIM(a_yw, 0) != m) {
+        std::string msg = ("len(y) = " + std::to_string(PyArray_DIM(a_yw, 0)) + " != " +
                   std::to_string(m) + " = m");
         PyErr_SetString(PyExc_ValueError, msg.c_str());
         return NULL;
@@ -124,19 +132,29 @@ py_fpback(PyObject* self, PyObject *args)
     }
 
     // allocate the output buffer
-    npy_intp dims[2] = {nc, PyArray_DIM(a_y, 1)};
+    npy_intp dims[2] = {nc, PyArray_DIM(a_yw, 1)};
     PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-    if (a_c == NULL) {
+    npy_intp dims1[1] = {m_};
+    PyArrayObject *a_residuals = (PyArrayObject *)PyArray_SimpleNew(1, dims1, NPY_DOUBLE);
+    if (a_c == NULL || a_residuals == NULL) {
         PyErr_NoMemory();
         return NULL;
     }
 
+    double fp = 0.0;
+
     try {
         // heavy lifting happens here
         fitpack::fpback(static_cast<const double *>(PyArray_DATA(a_R)), m, nz,
-                        nc,
+                        nc, static_cast<const double *>(PyArray_DATA(a_x)), m_,
+                        static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                        k, static_cast<const double *>(PyArray_DATA(a_w)),
+                        extrapolate,
+                        static_cast<const double *>(PyArray_DATA(a_yw)),
                         static_cast<const double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
-                        static_cast<double *>(PyArray_DATA(a_c))
+                        static_cast<double *>(PyArray_DATA(a_c)),
+                        &fp,
+                        static_cast<double *>(PyArray_DATA(a_residuals))
         );
     }
     catch (const std::exception& e) {
@@ -144,8 +162,8 @@ py_fpback(PyObject* self, PyObject *args)
         return NULL;
     }
 
-
-    return (PyObject *)a_c;
+    return Py_BuildValue("(NNN)", PyArray_Return(a_c),
+        PyArray_Return(a_residuals), PyFloat_FromDouble(fp));
 }
 
 /*
@@ -156,10 +174,12 @@ static PyObject*
 py_fpbacp(PyObject* self, PyObject *args)
 {
     PyObject *py_A1 = NULL, *py_A2 = NULL, *py_Z = NULL;
-    int k, kp;
-    Py_ssize_t len_t;
+    PyObject *py_x = NULL, *py_y=NULL, *py_t = NULL, *py_w = NULL;
+    int k, kp, extrapolate;
 
-    if(!PyArg_ParseTuple(args, "OOOiin", &py_A1, &py_A2, &py_Z, &k, &kp, &len_t)) {
+    if(!PyArg_ParseTuple(args, "OOOiiOOOO|p",
+        &py_A1, &py_A2, &py_Z, &k, &kp, &py_x, &py_y,
+        &py_t, &py_w, &extrapolate)) {
         return NULL;
     }
 
@@ -172,17 +192,25 @@ py_fpbacp(PyObject* self, PyObject *args)
     PyArrayObject *a_A1 = (PyArrayObject *)py_A1;
     PyArrayObject *a_A2 = (PyArrayObject *)py_A2;
     PyArrayObject *a_Z = (PyArrayObject *)py_Z;
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_x = (PyArrayObject *)py_x;
+    PyArrayObject *a_t = (PyArrayObject *)py_t;
+    PyArrayObject *a_w = (PyArrayObject *)py_w;
 
     // check consistency of array sizes
     Py_ssize_t A1_dim1 = PyArray_DIM(a_A1, 0);
     Py_ssize_t A2_dim1 = PyArray_DIM(a_A2, 0);
+    Py_ssize_t m = PyArray_DIM(a_x, 0);
+    Py_ssize_t len_t = PyArray_DIM(a_t, 0);
 
     int64_t nc = len_t - k - 1;
 
     // allocate the output buffer
     npy_intp dims[2] = {nc, 1};
     PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-    if (a_c == NULL) {
+    npy_intp dims1[1] = {m};
+    PyArrayObject *a_residuals = (PyArrayObject *)PyArray_SimpleNew(1, dims1, NPY_DOUBLE);
+    if (a_c == NULL || a_residuals == NULL) {
         PyErr_NoMemory();
         return NULL;
     }
@@ -193,8 +221,14 @@ py_fpbacp(PyObject* self, PyObject *args)
         fitpack::fpbacp(static_cast<const double *>(PyArray_DATA(a_A1)), A1_dim1,
                         static_cast<const double *>(PyArray_DATA(a_A2)), A2_dim1,
                         static_cast<const double *>(PyArray_DATA(a_Z)),
-                        k, kp, len_t,
-                        static_cast<double *>(PyArray_DATA(a_c))
+                        k, kp,
+                        static_cast<const double *>(PyArray_DATA(a_x)), m,
+                        static_cast<const double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 1),
+                        static_cast<const double *>(PyArray_DATA(a_t)), PyArray_DIM(a_t, 0),
+                        static_cast<const double *>(PyArray_DATA(a_w)),
+                        extrapolate,
+                        static_cast<double *>(PyArray_DATA(a_c)),
+                        static_cast<double *>(PyArray_DATA(a_residuals))
         );
     }
     catch (const std::exception& e) {
@@ -203,7 +237,7 @@ py_fpbacp(PyObject* self, PyObject *args)
     }
 
 
-    return (PyObject *)a_c;
+    return Py_BuildValue("(NN)", PyArray_Return(a_c), PyArray_Return(a_residuals));
 }
 
 

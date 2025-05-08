@@ -626,6 +626,61 @@ void qr_reduce_augmented_matrices(
     }
 }
 
+void _compute_residuals(
+    /* inputs */
+    const double *xptr, int64_t m,      // x, shape (m,)
+    const double *yptr, int64_t ydim2,            // y(m, ydim2)
+    const double *tptr, int64_t len_t,  // t, shape (len_t,)
+    const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+    int k,
+    int extrapolate,
+    int64_t nc,
+    const double *cptr,                                 // c(nc, ydim2)
+    /* output */
+    double *fp,
+    double *residualsptr                            // residuals(m,)
+) {
+    auto x = ConstRealArray1D(xptr, m);
+    auto y = ConstRealArray2D(yptr, m, ydim2);
+    auto t = ConstRealArray1D(tptr, len_t);
+    auto w = ConstRealArray1D(wptr, m);
+    auto residuals = RealArray1D(residualsptr, m);
+    auto c = ConstRealArray2D(cptr, nc, ydim2);
+
+    *fp = 0.0;
+    double l = k + 2;
+    int64_t ind = k;
+    std::vector<double> wrk(2*k + 2);
+    for( int64_t it = 1; it <= m; it++ ) {
+        if( !(x(it - 1) < t(l - 1) || l > len_t - k - 1) ) {
+            l = l + 1;
+        }
+
+        double xval = x(it - 1);
+
+        // find the interval
+        ind = _find_interval(t.data, len_t, k, xval, ind, extrapolate);
+
+        // compute non-zero b-splines
+        _deBoor_D(t.data, xval, k, ind, 0, wrk.data());
+
+        residuals(it - 1) = 0.0;
+        for( int64_t yi = 0; yi < ydim2; yi++ ) {
+            double term = 0.0;
+            int64_t l0 = l - k - 2;
+
+            for( int64_t j = 1; j <= k + 1; j++ ) {
+                l0 = l0 + 1;
+                term = term + c(l0 - 1, yi) * wrk[j - 1];
+            }
+            double delta = w(it - 1) * (term - y(it - 1, yi));
+            term = delta * delta;
+            residuals(it - 1) += term;
+            *fp = *fp + term;
+        }
+    }
+}
+
 
 /*
  * Back substitution solve of `R @ c = y` with an upper triangular R.
@@ -649,17 +704,25 @@ void
 fpback( /* inputs*/
        const double *Rptr, int64_t m, int64_t nz,    // R(m, nz), packed
        int64_t nc,                                   // dense R would be (m, nc)
+       const double *xptr, int64_t m_,      // x, shape (m,)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       int k,
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
+       const double* ywptr,
        const double *yptr, int64_t ydim2,            // y(m, ydim2)
         /* output */
-       double *cptr)                                 // c(nc, ydim2)
+       double *cptr,                                 // c(nc, ydim2)
+       double *fp,
+       double *residualsptr)                            // residuals(m,)
 {
     auto R = ConstRealArray2D(Rptr, m, nz);
-    auto y = ConstRealArray2D(yptr, m, ydim2);
+    auto yw = ConstRealArray2D(ywptr, m, ydim2);
     auto c = RealArray2D(cptr, nc, ydim2);
 
     // c[nc-1, ...] = y[nc-1] / R[nc-1, 0]
     for (int64_t l=0; l < ydim2; ++l) {
-        c(nc - 1, l) = y(nc - 1, l) / R(nc-1, 0);
+        c(nc - 1, l) = yw(nc - 1, l) / R(nc - 1, 0);
     }
 
     //for i in range(nc-2, -1, -1):
@@ -668,7 +731,7 @@ fpback( /* inputs*/
     for (int64_t i=nc-2; i >= 0; --i) {
         int64_t nel = std::min(nz, nc - i);
         for (int64_t l=0; l < ydim2; ++l){
-            double ssum = y(i, l);
+            double ssum = yw(i, l);
             for (int64_t j=1; j < nel; ++j) {
                 ssum -= R(i, j) * c(i + j, l);
             }
@@ -676,6 +739,11 @@ fpback( /* inputs*/
             c(i, l) = ssum;
         }
     }
+
+    _compute_residuals(
+        xptr, m_, yptr, ydim2, tptr, len_t,
+        wptr, k, extrapolate, nc, cptr, fp, residualsptr
+    );
 }
 
 void _fpbacp(
@@ -742,15 +810,26 @@ fpbacp( /* inputs*/
        const double *A2ptr,
        int64_t a2_rows,
        const double *Zptr,
-       int k, int kp, int64_t len_t,
+       int k, int kp,
+       const double *xptr, int64_t m,      // x, shape (m,)
+       const double *yptr, int64_t ydim2,            // y(m, ydim2)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
        /* output */
-       double *cptr) {
+       double *cptr,
+       double *residualsptr) {
 
     int64_t nc = len_t - k - 1;
+    auto x = ConstRealArray1D(xptr, m);
+    auto t = ConstRealArray1D(tptr, len_t);
+    auto w = ConstRealArray1D(wptr, m);
+    auto y = ConstRealArray2D(yptr, m, ydim2);
     auto A1 = ConstRealArray2D(A1ptr, a1_rows, kp + 1);
     auto A2 = ConstRealArray2D(A2ptr, a2_rows, kp);
     auto Z = ConstRealArray1D(Zptr, nc);
     auto c = RealArray2D(cptr, nc, 1);
+    auto residuals = RealArray1D(residualsptr, m);
 
     _fpbacp(A1, A2, Z, k, kp, len_t, c);
 
@@ -758,6 +837,13 @@ fpbacp( /* inputs*/
     for( int64_t i = 0; i < k; i++ ) {
         c(i + offset, 0) = c(i, 0);
     }
+
+    double fp;
+    _compute_residuals(
+        xptr, m, yptr, ydim2, tptr, len_t,
+        wptr, k, extrapolate, nc, cptr, &fp, residualsptr
+    );
+
 }
 
 

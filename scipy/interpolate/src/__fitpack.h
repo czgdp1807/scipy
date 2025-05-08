@@ -221,9 +221,17 @@ void
 fpback( /* inputs*/
        const double *Rptr, int64_t m, int64_t nz,    // R(m, nz), packed
        int64_t nc,                                   // dense R would be (m, nc)
+       const double *xptr, int64_t m_,      // x, shape (m,)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       int k,
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
+       const double* ywptr,
        const double *yptr, int64_t ydim2,            // y(m, ydim2)
         /* output */
-       double *cptr                                 // c(nc, ydim2)
+       double *cptr,                                 // c(nc, ydim2)
+       double *fp,
+       double *residualsptr
 );
 
 void
@@ -233,9 +241,15 @@ fpbacp( /* inputs*/
        const double *A2ptr,
        int64_t a2_rows,
        const double *Zptr,
-       int k, int kp, int64_t len_t,
+       int k, int kp,
+       const double *xptr, int64_t m,      // x, shape (m,)
+       const double *yptr, int64_t ydim2,            // y(m, ydim2)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
        /* output */
-       double *cptr
+       double *cptr,
+       double *residualsptr
 );
 
 

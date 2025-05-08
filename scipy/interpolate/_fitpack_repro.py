@@ -575,12 +575,9 @@ class F:
         _dierckx.qr_reduce(AB, offset, nc, QY, startrow=nc)
 
         # solve for the coefficients
-        c = _dierckx.fpback(AB, nc, QY)
+        c, _, fp = _dierckx.fpback(AB, nc, self.x, self.y, self.t, self.k, self.w, QY)
 
         spl = BSpline(self.t, c, self.k)
-        residuals = _compute_residuals(self.w**2, spl(self.x), self.y)
-        fp = residuals.sum()
-
         self.spl = spl   # store it
 
         return fp - self.s
@@ -651,13 +648,11 @@ class Fperiodic:
             G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
 
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
-        c = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
-                            self.k, self.k + 1, len(self.t))
-
-        spl = BSpline(self.t, c, self.k)
-        residuals = _compute_residuals(self.w[:-1]**2, spl(self.x[:-1]), self.y[:-1])
+        c, residuals = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
+                            self.k, self.k + 1, self.x[:-1], self.y[:-1, None], self.t, self.w[:-1])
         fp = residuals.sum()
 
+        spl = BSpline(self.t, c, self.k)
         self.spl = spl   # store it
 
         return fp - self.s

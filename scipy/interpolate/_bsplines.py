@@ -1872,11 +1872,12 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
     y_w = y * w[:, None]
     return_values = None
     fp = None
+    residuals = None
     if not periodic:
         A, offset, nc = _dierckx.data_matrix(x, t, k, w)
         _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
-        c = _dierckx.fpback(A, nc, y_w)
-        return_values = A, y_w, c
+        c, residuals, fp = _dierckx.fpback(A, nc, x, y, t, k, w, y_w)
+        return A, y_w, c, fp, residuals
     else:
         # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
@@ -1893,20 +1894,11 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
                 len(t), False, True
             )         # modifies arguments in-place
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
-        c = _dierckx.fpbacp(A1, A2, Z, k, k, len(t))
+        c, residuals = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
         if solve_for_p:
-            return_values = (R, A1, A2, Z), y_w, c
-            fp = p
+            return (R, A1, A2, Z), y_w, c, p, residuals
         else:
-            return_values = R, y_w, c
-            fp = fp
-
-    cc = np.ascontiguousarray(c)
-    spl = BSpline(t, cc, k)
-    residuals = _compute_residuals(w**2, spl(x), y)
-    if not periodic:
-        fp = residuals.sum()
-    return return_values + (fp, residuals, )
+            return R, y_w, c, fp, residuals
 
 
 
