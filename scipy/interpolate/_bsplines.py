@@ -1837,7 +1837,7 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
         c = cho_solve_banded((cho_decomp, lower), rhs.reshape(m, -1), overwrite_b=True,
                              check_finite=check_finite).reshape(rhs.shape)
     elif method == "qr":
-        _, _, c = _lsq_solve_qr(x, yy, t, k, w)
+        _, _, c, _, _ = _lsq_solve_qr(x, yy, t, k, w)
 
         if was_complex:
             c = c.view(complex)
@@ -1856,7 +1856,11 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
 # LSQ spline helpers #
 ######################
 
-def _lsq_solve_qr(x, y, t, k, w):
+def _compute_residuals(w2, splx, y):
+    delta = ((splx - y)**2).sum(axis=1)
+    return w2 * delta
+
+def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
     """Solve for the LSQ spline coeffs given x, y and knots.
 
     `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
@@ -1866,11 +1870,34 @@ def _lsq_solve_qr(x, y, t, k, w):
     assert y.ndim == 2
 
     y_w = y * w[:, None]
-    A, offset, nc = _dierckx.data_matrix(x, t, k, w)
-    _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
-    c = _dierckx.fpback(A, nc, y_w)
+    if not periodic:
+        A, offset, nc = _dierckx.data_matrix(x, t, k, w)
+        _dierckx.qr_reduce(A, offset, nc, y_w)         # modifies arguments in-place
+        c, residuals, fp = _dierckx.fpback(A, nc, x, y, t, k, w, y_w)
+        return A, y_w, c, fp, residuals
+    else:
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
+        R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
+        assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
+        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
+        if solve_for_p:
+            A1, A2, Z, p = _dierckx.qr_reduce_periodic(
+                R, H1, H2, offset, nc, y_w, k,
+                len(t), True
+            )         # modifies arguments in-place
+        else:
+            A1, A2, Z, fp = _dierckx.qr_reduce_periodic(
+                R, H1, H2, offset, nc, y_w, k,
+                len(t), False, True
+            )         # modifies arguments in-place
+        # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
+        c, residuals = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
+        if solve_for_p:
+            return (R, A1, A2, Z), y_w, c, p, residuals
+        else:
+            return R, y_w, c, fp, residuals
 
-    return A, y_w, c
+
 
 
 #############################
@@ -2124,7 +2151,7 @@ def _compute_optimal_gcv_parameter(X, wE, y, w):
             else:
                 raise ValueError(f"Unable to find minimum of the GCV "
                                  f"function: {gcv_est.message}")
-        return gcv_est 
+        return gcv_est
     else:
         # trailing dims must have been flattened already.
         raise RuntimeError("Internal error. Please report it to scipy developers.")

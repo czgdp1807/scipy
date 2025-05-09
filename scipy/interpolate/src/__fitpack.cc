@@ -171,10 +171,97 @@ data_matrix( /* inputs */
     *nc = len_t - k - 1;
 }
 
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L181-L195
+// and
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L221-L238
+// For given set of knots, computes H1 and H2 for all the data points except the last.
+// Check the above link for semantics of H1 and H2.
+void
+data_matrix_periodic( /* inputs */
+            const double *xptr, int64_t m,      // x, shape (m,)
+            const double *tptr, int64_t len_t,  // t, shape (len_t,)
+            int k,
+            const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+            int extrapolate,
+            /* outputs */
+            double *Aptr,                       // A, shape(m, k+1)
+            double *H1ptr,                      // H1, shape(m, k+1)
+            double *H2ptr,                      // H2, shape(m, k+1)
+            int64_t *offset_ptr,                // offset, shape (m,)
+            int64_t *nc,                        // the number of coefficient
+            /* work array*/
+            double *wrk)                        // work, shape (2k+2)
+{
+    auto x = ConstRealArray1D(xptr, m);
+    auto t = ConstRealArray1D(tptr, len_t);
+    auto w = ConstRealArray1D(wptr, m);
+    auto A = RealArray2D(Aptr, m, k+1);
+    auto H1 = RealArray2D(H1ptr, m, k+1);
+    auto H2 = RealArray2D(H2ptr, m, k);
+    auto offset = Array1D<int64_t, false>(offset_ptr, m);
+
+    for( int64_t i = 0; i < m; i++ ) {
+        for( int64_t j = 0; j < k; j++ ) {
+            H1(i, j) = 0.0;
+            H2(i, j) = 0.0;
+        }
+        H1(i, k) = 0.0;
+    }
+
+    int64_t ind = k;
+    for (int i=0; i < m; ++i) {
+        double xval = x(i);
+
+        // find the interval
+        ind = _find_interval(t.data, len_t, k, xval, ind, extrapolate);
+        if (!extrapolate && (ind < 0)){
+            // should not happen here, validation is expected on the python side
+            throw std::runtime_error("find_interval: out of bounds with x = " + std::to_string(xval));
+        }
+        int64_t offseti = ind - k;
+        offset(i) = offseti;
+
+        // compute non-zero b-splines
+        _deBoor_D(t.data, xval, k, ind, 0, wrk);
+
+        for (int64_t j=0; j < k+1; ++j) {
+            A(i, j) = wrk[j] * w(i);
+        }
+
+        int64_t l = ind + 1;
+        if( l >= len_t - 2*k ) {
+            int64_t j;
+            for( j=0; j < k; ++j ) {
+                H1(i, j) = 0;
+                H2(i, j) = 0;
+            }
+            H1(i, k) = 0;
+
+            j = l - len_t + 2*k;
+            for( int64_t i1 = 0; i1 < k+1; i1++ ) {
+                j = j + 1;
+                int64_t l0 = j;
+                int64_t l1 = l0 - k;
+                while (l1 > std::max(int64_t(0), len_t - 3*k - 1)) {
+                    l0 = l1 - len_t + 3*k + 1;
+                    l1 = l0 - k;
+                }
+                if( l1 > 0 ) {
+                    H1(i, l1 - 1) = wrk[i1] * w(i);
+                } else {
+                    H2(i, l0 - 1) = H2(i, l0 - 1) + wrk[i1] * w(i);
+                }
+            }
+        }
+    }
+
+    *nc = len_t - k - 1;
+}
+
 
 /*
  *   Solve the LSQ problem ||y - A@c||^2 via QR factorization.
- *  
+ *
     QR factorization follows FITPACK: we reduce A row-by-row by Givens rotations.
     To zero out the lower triangle, we use in the row `i` and column `j < i`,
     the diagonal element in that column. That way, the sequence is
@@ -262,6 +349,338 @@ qr_reduce(double *aptr, const int64_t m, const int64_t nz, // a(m, nz), packed
     } // for(i = ...
 }
 
+/*
+    Solve the LSQ problem ||y - A@c||^2 via QR factorization
+    for periodic splines.
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L197-L215
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L293-L310
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L239-L288
+    and
+    Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L407-L427
+
+    See each reference to Fortran code above the corresponding C++ code written below.
+*/
+void
+qr_reduce_periodic(double *aptr, double *h1ptr, double *h2ptr,   // a(m, nz), h1(m, nz), h2(m, nz) packed
+          const int64_t m, const int64_t nz,
+          int64_t *offset,                                 // offset(m)
+          const int64_t nc,                                // dense would be a(m, nc)
+          double *yptr, const int64_t ydim1,               // y(m, ydim2)
+          const int k, const int64_t len_t,
+          double *a1ptr,                                   // A1(len_t - k - 1, k + 1)
+          double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
+          double *zptr,                                    // z(len_t - k - 1),
+          bool init_p,
+          double& p,
+          bool get_fp,
+          double& fp
+) {
+    auto H = RealArray2D(aptr, m, nz);
+    auto H1 = RealArray2D(h1ptr, m, nz);
+    auto H2 = RealArray2D(h2ptr, m, nz - 1);
+    auto A1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
+    auto A2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);
+    auto z = RealArray1D(zptr, len_t - k - 1);
+    auto y = RealArray2D(yptr, m + 1, ydim1);
+
+    for( int64_t i = 1; i <= len_t - k - 1; i++ ) {
+        z(i - 1) = 0.0;
+        for( int64_t j = 1; j <= k + 1; j++ ) {
+            A1(i - 1, j - 1) = 0.0;
+        }
+    }
+
+    int64_t jper = 0;
+    int64_t nk1 = len_t - k - 1;
+    int64_t n7 = nk1 - k;
+    int64_t n10 = n7 - k;
+    fp = 0.0;
+    for( int64_t it = 1; it <= m; it++ ) {
+        double yi = y(it - 1, 0);
+        int64_t ind = offset[it - 1] + k;
+        int64_t l = ind + 1;
+        int64_t l5 = l - k - 1;
+        int64_t ij;
+        if (l5 >= n10) {
+
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L199-L215
+            if (jper == 0) {
+                for( int64_t i = 1; i <= n7; i++ ) {
+                    for( int64_t j = 1; j <= k; j++ ) {
+                        A2(i - 1, j - 1) = 0;
+                    }
+                }
+
+                int64_t jk = n10 + 1;
+                for( int64_t i = 1; i <= k; i++ ) {
+                    int64_t ik = jk;
+                    for( int64_t j = 1; j <= k + 1; j++ ) {
+                        if( ik <= 0 ) break;
+                        A2(ik - 1, i - 1) = A1(ik - 1, j - 1);
+                        ik = ik - 1;
+                    }
+                    jk = jk + 1;
+                }
+                jper = 1;
+            }
+
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L239-L288
+            // rotate the new row of the observation matrix into triangle
+            // by givens transformations.
+            if (n10 > 0) {
+                // rotation with the rows 1,2,...n10 of matrix a.
+                for( int64_t j = 1; j <= n10; j++ ) {
+                    double piv = H1(it - 1, 0);
+                    if( piv == 0.0 ) {
+                        for( int64_t h1i = 1; h1i <= k; h1i++ ) {
+                            H1(it - 1, h1i - 1) = H1(it - 1, h1i);
+                        }
+                        H1(it - 1, k) = 0.0;
+                    } else {
+
+                        // calculate the parameters of the givens transformation.
+                        double c, s, r;
+                        DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
+                        A1(j - 1, 0) = r;
+
+                        // transformation to the right hand side.
+                        std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+                        // transformations to the left hand side with respect to a2.
+                        for( int64_t h2i = 1; h2i <= k; h2i++ ) {
+                            std::tie(A2(j - 1, h2i - 1), H2(it - 1, h2i - 1)) = fprota(
+                                c, s, A2(j - 1, h2i - 1), H2(it - 1, h2i - 1));
+                        }
+
+                        if( j == n10 ) {
+                            break;
+                        }
+                        int64_t i2 = std::min(n10 - j, (int64_t) k) + 1;
+
+                        // transformations to the left hand side with respect to a1.
+                        for( int64_t h1i = 1; h1i < i2; h1i++ ) {
+                            std::tie(A1(j - 1, h1i), H1(it - 1, h1i)) = fprota(c, s, A1(j - 1, h1i), H1(it - 1, h1i));
+                        }
+
+                        for( int64_t h1i = 1; h1i <= i2; h1i++ ) {
+                            H1(it - 1, h1i - 1) = H1(it - 1, h1i);
+                        }
+                        H1(it - 1, i2 - 1) = 0.0;
+
+                    }
+                }
+            }
+
+            // rotation with the rows n10+1,...n7 of matrix a.
+            for( int64_t j = 1; j <= k; j++ ) {
+                ij  = n10 + j;
+                double piv = H2(it - 1, j - 1);
+                if (ij <= 0 || piv == 0.0) {
+                    continue;
+                }
+
+                // calculate the parameters of the givens transformation.
+                double c, s, r;
+                DLARTG(&A2(ij - 1, j - 1), &piv, &c, &s, &r);
+                A2(ij - 1, j - 1) = r;
+                // transformations to right hand side.
+                std::tie(z(ij - 1), yi) = fprota(c, s, z(ij - 1), yi);
+
+                if( j == k ) {
+                    break;
+                }
+
+                // transformations to left hand side.
+                for( int64_t h2i = j + 1; h2i <= k; h2i++ ) {
+                    std::tie(A2(ij - 1, h2i - 1), H2(it - 1, h2i - 1)) = fprota(c, s, A2(ij - 1, h2i - 1), H2(it - 1, h2i - 1));
+                }
+
+            }
+
+        } else {
+            // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L293-L310
+            // rotation of the new row of the observation matrix into triangle in case the b-splines
+            // nj,k+1(x),j=n7+1,...n-k-1 are all zero at xi.
+            int64_t j = l5;
+            for( int64_t i = 1; i <= k + 1; i++ ) {
+                j = j + 1;
+                double piv = H(it - 1, i - 1);
+                if( piv == 0.0 ) {
+                    continue;
+                }
+
+                double c, s, r;
+                DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
+                A1(j - 1, 0) = r;
+
+                std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+
+                if( i == k + 1 ) {
+                    break;
+                }
+                int64_t i2 = 1;
+                int64_t i3 = i + 1;
+
+                for( int64_t i1 = i3; i1 <= k + 1; i1++ ) {
+                    i2 = i2 + 1;
+                    std::tie(A1(j - 1, i2 - 1), H(it - 1, i1 - 1)) = fprota(c, s, A1(j - 1, i2 - 1), H(it - 1, i1 - 1));
+                }
+            }
+        }
+
+        // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L288
+        fp += yi*yi;
+    }
+
+    // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L407-L427
+    if( init_p ) {
+        p = 0.0;
+        int64_t l = n7;
+        for( int64_t i = 1; i <= k; i++ ) {
+            int64_t j = k + 1 - i;
+            p = p + A2(l - 1, j - 1);
+            l = l - 1;
+            if( l == 0 ) {
+                break;
+            }
+        }
+
+        if( l != 0 ) {
+            for( int64_t i = 0; i < n10; i++ ) {
+                p = p + A1(i, 0);
+            }
+        }
+        p = n7/p;
+    }
+}
+
+
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
+// Performs QR decomposition of augmented matrices with H1 and H2.
+void qr_reduce_augmented_matrices(
+    double* g1ptr, double* g2ptr,
+    double* h1ptr, double* h2ptr,
+    double* cptr, double* offsetptr,
+    int k, int64_t len_t
+) {
+    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
+    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
+    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
+    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
+    auto c = RealArray2D(cptr, len_t - k - 1, 1);
+    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
+
+    // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
+    for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
+        double yi = 0.0;
+        for( int64_t j = offset(it - 1); j <= len_t - 3*k - 2; j++ ) {
+            double piv = h1(it - 1, 0);
+
+            double cos, sin, r;
+            DLARTG(&g1(j - 1, 0), &piv, &cos, &sin, &r);
+            g1(j - 1, 0) = r;
+
+            std::tie(c(j - 1, 0), yi) = fprota(cos, sin, c(j - 1, 0), yi);
+
+            for( int64_t h2i = 0; h2i < k + 1; h2i++ ) {
+                std::tie(g2(j - 1, h2i), h2(it - 1, h2i)) = fprota(cos, sin, g2(j - 1, h2i), h2(it - 1, h2i));
+            }
+
+            if( j == (len_t - 3*k - 2) ) {
+                break ;
+            }
+
+            int64_t i2 = std::min(len_t - 3*k - 2 - j, (int64_t) k + 1) + 1;
+            for( int64_t h1i = 1; h1i < i2; h1i++ ) {
+                std::tie(g1(j - 1, h1i), h1(it - 1, h1i)) = fprota(cos, sin, g1(j - 1, h1i), h1(it - 1, h1i));
+            }
+
+            for( int64_t h1i = 1; h1i <= (i2 - 1); h1i++ ) {
+                h1(it - 1, h1i - 1) = h1(it - 1, h1i);
+            }
+            h1(it - 1, i2 - 1) = 0.0;
+        }
+
+        for( int64_t j = 1; j <= k + 1; j++ ) {
+            int64_t ij = len_t - 3*k - 2 + j;
+            if( ij <= 0 ) {
+                continue;
+            }
+            double piv = h2(it - 1, j - 1);
+
+            double cos, sin, r;
+            DLARTG(&g2(ij - 1, j - 1), &piv, &cos, &sin, &r);
+            g2(ij - 1, j - 1) = r;
+
+            std::tie(c(ij - 1, 0), yi) = fprota(cos, sin, c(ij - 1, 0), yi);
+
+            if( j == k + 1) {
+                break ;
+            }
+
+            for( int64_t h2i = j + 1; h2i <= k + 1; h2i++ ) {
+                std::tie(g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1)) = fprota(cos, sin, g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1));
+            }
+        }
+    }
+}
+
+void _compute_residuals(
+    /* inputs */
+    const double *xptr, int64_t m,      // x, shape (m,)
+    const double *yptr, int64_t ydim2,            // y(m, ydim2)
+    const double *tptr, int64_t len_t,  // t, shape (len_t,)
+    const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+    int k,
+    int extrapolate,
+    int64_t nc,
+    const double *cptr,                                 // c(nc, ydim2)
+    /* output */
+    double *fp,
+    double *residualsptr                            // residuals(m,)
+) {
+    auto x = ConstRealArray1D(xptr, m);
+    auto y = ConstRealArray2D(yptr, m, ydim2);
+    auto t = ConstRealArray1D(tptr, len_t);
+    auto w = ConstRealArray1D(wptr, m);
+    auto residuals = RealArray1D(residualsptr, m);
+    auto c = ConstRealArray2D(cptr, nc, ydim2);
+
+    *fp = 0.0;
+    double l = k + 2;
+    int64_t ind = k;
+    std::vector<double> wrk(2*k + 2);
+    for( int64_t it = 1; it <= m; it++ ) {
+        if( !(x(it - 1) < t(l - 1) || l > len_t - k - 1) ) {
+            l = l + 1;
+        }
+
+        double xval = x(it - 1);
+
+        // find the interval
+        ind = _find_interval(t.data, len_t, k, xval, ind, extrapolate);
+
+        // compute non-zero b-splines
+        _deBoor_D(t.data, xval, k, ind, 0, wrk.data());
+
+        residuals(it - 1) = 0.0;
+        for( int64_t yi = 0; yi < ydim2; yi++ ) {
+            double term = 0.0;
+            int64_t l0 = l - k - 2;
+
+            for( int64_t j = 1; j <= k + 1; j++ ) {
+                l0 = l0 + 1;
+                term = term + c(l0 - 1, yi) * wrk[j - 1];
+            }
+            double delta = w(it - 1) * (term - y(it - 1, yi));
+            term = delta * delta;
+            residuals(it - 1) += term;
+            *fp = *fp + term;
+        }
+    }
+}
+
 
 /*
  * Back substitution solve of `R @ c = y` with an upper triangular R.
@@ -285,17 +704,25 @@ void
 fpback( /* inputs*/
        const double *Rptr, int64_t m, int64_t nz,    // R(m, nz), packed
        int64_t nc,                                   // dense R would be (m, nc)
+       const double *xptr, int64_t m_,      // x, shape (m,)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       int k,
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
+       const double* ywptr,
        const double *yptr, int64_t ydim2,            // y(m, ydim2)
         /* output */
-       double *cptr)                                 // c(nc, ydim2)
+       double *cptr,                                 // c(nc, ydim2)
+       double *fp,
+       double *residualsptr)                            // residuals(m,)
 {
     auto R = ConstRealArray2D(Rptr, m, nz);
-    auto y = ConstRealArray2D(yptr, m, ydim2);
+    auto yw = ConstRealArray2D(ywptr, m, ydim2);
     auto c = RealArray2D(cptr, nc, ydim2);
 
     // c[nc-1, ...] = y[nc-1] / R[nc-1, 0]
     for (int64_t l=0; l < ydim2; ++l) {
-        c(nc - 1, l) = y(nc - 1, l) / R(nc-1, 0);
+        c(nc - 1, l) = yw(nc - 1, l) / R(nc - 1, 0);
     }
 
     //for i in range(nc-2, -1, -1):
@@ -304,7 +731,7 @@ fpback( /* inputs*/
     for (int64_t i=nc-2; i >= 0; --i) {
         int64_t nel = std::min(nz, nc - i);
         for (int64_t l=0; l < ydim2; ++l){
-            double ssum = y(i, l);
+            double ssum = yw(i, l);
             for (int64_t j=1; j < nel; ++j) {
                 ssum -= R(i, j) * c(i + j, l);
             }
@@ -312,6 +739,106 @@ fpback( /* inputs*/
             c(i, l) = ssum;
         }
     }
+
+    _compute_residuals(
+        xptr, m_, yptr, ydim2, tptr, len_t,
+        wptr, k, extrapolate, nc, cptr, fp, residualsptr
+    );
+}
+
+void _fpbacp(
+        ConstRealArray2D& A1,
+        ConstRealArray2D& A2,
+        ConstRealArray1D& Z,
+        int k, int kp, int64_t len_t,
+        RealArray2D& c) {
+
+    int64_t nc = len_t - k - 1;
+    int64_t n = nc - k;
+    int64_t n2 = n - kp;
+    int64_t l = n;
+    for( int64_t i = 1; i <= kp; i++ ) {
+        double store = Z(l - 1);
+        int64_t j = kp + 2 - i;
+        if( i != 1 ) {
+            int64_t l0 = l;
+            for( int64_t l1 = j; l1 <= kp; l1++ ) {
+                l0 = l0 + 1;
+                store = store - c(l0 - 1, 0) * A2(l - 1, l1 - 1);
+            }
+        }
+        c(l - 1, 0) = store/A2(l - 1, j - 2);
+        l = l - 1;
+        if( l == 0 ) {
+            return ;
+        }
+    }
+    for( int64_t i = 1; i <= n2; i++ ) {
+        double store = Z(i - 1);
+        l = n2;
+        for( int64_t j = 1; j <= kp; j++ ) {
+            l = l + 1;
+            store = store - c(l - 1, 0) * A2(i - 1, j - 1);
+        }
+        c(i - 1, 0) = store;
+    }
+    int64_t i = n2;
+    c(i - 1, 0) = c(i - 1, 0)/A1(i - 1, 0);
+    if( i == 1 ) {
+        return ;
+    }
+    for( int64_t j = 2; j <= n2; j++ ) {
+        i = i - 1;
+        double store = c(i - 1, 0);
+        int64_t i1 = kp;
+        if( j <= kp ) {
+            i1 = j - 1;
+        }
+        l = i;
+        for( int64_t l0 = 1; l0 <= i1; l0++ ) {
+            l = l + 1;
+            store = store - c(l - 1, 0) * A1(i - 1, l0);
+        }
+        c(i - 1, 0) = store/A1(i - 1, 0);
+    }
+}
+
+void
+fpbacp( /* inputs*/
+       const double *A1ptr,
+       int64_t a1_rows,
+       const double *A2ptr,
+       int64_t a2_rows,
+       const double *Zptr,
+       int k, int kp,
+       const double *xptr, int64_t m,      // x, shape (m,)
+       const double *yptr, int64_t ydim2,            // y(m, ydim2)
+       const double *tptr, int64_t len_t,  // t, shape (len_t,)
+       const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+       int extrapolate,
+       /* output */
+       double *cptr,
+       double *residualsptr) {
+
+    int64_t nc = len_t - k - 1;
+    auto A1 = ConstRealArray2D(A1ptr, a1_rows, kp + 1);
+    auto A2 = ConstRealArray2D(A2ptr, a2_rows, kp);
+    auto Z = ConstRealArray1D(Zptr, nc);
+    auto c = RealArray2D(cptr, nc, 1);
+
+    _fpbacp(A1, A2, Z, k, kp, len_t, c);
+
+    int64_t offset = len_t - 2*k - 1;
+    for( int64_t i = 0; i < k; i++ ) {
+        c(i + offset, 0) = c(i, 0);
+    }
+
+    double fp;
+    _compute_residuals(
+        xptr, m, yptr, ydim2, tptr, len_t,
+        wptr, k, extrapolate, nc, cptr, &fp, residualsptr
+    );
+
 }
 
 
@@ -558,7 +1085,7 @@ norm_eq_lsq(const double *xptr, int64_t m,            // x, shape (m,)
             row = left - k + r;
             for (s=0; s < r+1; s++) {
                 clmn = left - k + s;
-                abT(clmn, r-s) += wrk[r] * wrk[s] * wval;   // NB: rows/cols swapped for F order                
+                abT(clmn, r-s) += wrk[r] * wrk[s] * wval;   // NB: rows/cols swapped for F order
             }
 
             // ... rhs = A.T @ y
@@ -574,7 +1101,7 @@ norm_eq_lsq(const double *xptr, int64_t m,            // x, shape (m,)
 
 /* Evaluate an N-dim tensor product spline or its derivative */
 void
-_evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, shape(npts, ndim) 
+_evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, shape(npts, ndim)
                     const double *t_ptr, int64_t max_len_t,            // t, shape (ndim, max_len_t)
                     const int64_t *len_t_ptr,                          // len_t, shape (ndim,)
                     const int64_t *k_ptr,                              // k, shape (ndim,)
@@ -598,7 +1125,7 @@ _evaluate_ndbspline(const double *xi_ptr, int64_t npts, int64_t ndim,  // xi, sh
     auto out = RealArray2D(out_ptr, npts, num_c_tr);
 
     // allocate work arrays (small, allocations unlikely to fail)
-    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim); 
+    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim);
     std::vector<double> wrk(2*max_k + 2);
     std::vector<int64_t> i(ndim);
 
@@ -724,7 +1251,7 @@ _coloc_nd(/* inputs */
     auto csr_data = RealArray1D(csr_data_ptr, npts*volume);
 
     // allocate work arrays (small, allocations unlikely to fail)
-    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim); 
+    int64_t max_k = *std::max_element(k_ptr, k_ptr + ndim);
     std::vector<double> wrk(2*max_k + 2);
     std::vector<int64_t> i(ndim);
 
@@ -782,7 +1309,7 @@ _coloc_nd(/* inputs */
                 idx_cflat += idx * strides_c1(d);
             }
 
-            /* 
+            /*
              *  Fill the row of the colocation matrix in the CSR format.
              * If it were dense, it would have been just
              * >>> matr[j, idx_cflat] = factor
@@ -798,5 +1325,123 @@ _coloc_nd(/* inputs */
     return 0;
 }
 
+/*
+Computes fp0 for constant function.
+Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
+*/
+double
+get_residual_p0(/* inputs */
+            const double *yptr,      // y, shape (m, 1)
+            const double *wptr,      // w, shape (m,)
+            int64_t m
+) {
+    auto y = ConstRealArray2D(yptr, m, 1);
+    auto w = ConstRealArray1D(wptr, m);
+
+    double fp0 = 0.0, d1 = 0.0, c1 = 0.0;
+    for( int64_t it = 0; it < m - 1; it++ ) {
+        double wi = w(it);
+        double yi = y(it, 0) * wi;
+        double c, s, r;
+        DLARTG(&d1, &wi, &c, &s, &r);
+        d1 = r;
+        std::tie(c1, yi) = fprota(c, s, c1, yi);
+        fp0 = fp0 + yi*yi;
+    }
+
+    return fp0;
+}
+
+// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L441-L493
+// Note that H1 and H2 are not multipled by pinv here. It is done in the iterative step just before
+// QR reduction of agumented matrices happens.
+void init_augmented_matrices(
+    double *a1ptr, double *a2ptr, double *bptr,
+    int k, int64_t len_t,
+    double *g1ptr, double *g2ptr,
+    double *h1ptr, double *h2ptr, double *offsetptr) {
+    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
+    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
+    auto a1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
+    auto a2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);
+    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
+    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
+    auto b = RealArray2D(bptr, len_t - 2*k - 2, k + 2);
+    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
+
+    int64_t l0, l, l1;
+
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        for( int64_t j = 0; j < k + 1; j++ ) {
+            g1(i, j) = a1(i, j);
+        }
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        g1(i, k + 1) = 0.0;
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        g2(i, 0) = 0.0;
+    }
+    for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
+        for( int64_t j = 1; j < k + 1; j++ ) {
+            g2(i, j) = a2(i, j - 1);
+        }
+    }
+
+    l = len_t - 3*k - 1;
+    for( int64_t j = 0; j < k + 1; j++ ) {
+        if( l <= 0 ) {
+            break;
+        }
+        g2(l - 1, 0) = a1(l - 1, j);
+        l = l - 1;
+    }
+
+    for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
+
+        // fetch a new row of matrix b and store it in the arrays h1 (the part
+        // with respect to g1) and h2 (the part with respect to g2).
+        for( int64_t i = 0; i < k + 1; i++ ) {
+            h1(it - 1, i) = 0;
+            h2(it - 1, i) = 0;
+        }
+        h1(it - 1, k + 1) = 0;
+        if( it <= len_t - 3*k - 2 ) {
+            l = it;
+            l0 = it;
+            for( int64_t j = 1; j <= k + 2; j++ ) {
+                if( l0 == len_t - 3*k - 1 ) {
+                    l0 = 1;
+                    for( int64_t l1 = j; l1 <= k + 2; l1++ ) {
+                        h2(it - 1, l0 - 1) = b(it - 1, l1 - 1);
+                        l0 = l0 + 1;
+                    }
+                    break;
+                }
+                h1(it - 1, j - 1) = b(it - 1, j - 1);
+                l0 = l0 + 1;
+            }
+        } else {
+            l = 1;
+            int64_t i = it - (len_t - 3*k - 1);
+            for( int64_t j = 1; j <= k + 2; j++ ) {
+                i = i + 1;
+                l0 = i;
+                l1 = l0 - (k + 1);
+                while( l1 > std::max((int64_t) 0, len_t - 3*k - 2) ) {
+                    l0 = l1 - (len_t - 3*k - 2);
+                    l1 = l0 - (k + 1);
+                }
+                if( l1 > 0 ) {
+                    h1(it - 1, l1 - 1) = b(it - 1, j - 1);
+                } else {
+                    h2(it - 1, l0 - 1) = h2(it - 1, l0 - 1) + b(it - 1, j - 1);
+                }
+            }
+        }
+
+        offset(it - 1) = l;
+    }
+}
 
 } // namespace fitpack
