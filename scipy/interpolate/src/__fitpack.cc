@@ -821,15 +821,10 @@ fpbacp( /* inputs*/
        double *residualsptr) {
 
     int64_t nc = len_t - k - 1;
-    auto x = ConstRealArray1D(xptr, m);
-    auto t = ConstRealArray1D(tptr, len_t);
-    auto w = ConstRealArray1D(wptr, m);
-    auto y = ConstRealArray2D(yptr, m, ydim2);
     auto A1 = ConstRealArray2D(A1ptr, a1_rows, kp + 1);
     auto A2 = ConstRealArray2D(A2ptr, a2_rows, kp);
     auto Z = ConstRealArray1D(Zptr, nc);
     auto c = RealArray2D(cptr, nc, 1);
-    auto residuals = RealArray1D(residualsptr, m);
 
     _fpbacp(A1, A2, Z, k, kp, len_t, c);
 
