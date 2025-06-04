@@ -1189,7 +1189,7 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
 
     u, x, w, k, s, ub, ue = _validate_inputs(u, x, w, k, s, ub, ue, parametric=True)
 
-    spl = _make_splrep_impl(u, x, w, ub, ue, k, s, t, nest)
+    spl = _make_splrep_impl(u, x, w, ub, ue, k, s, t, nest, False)
 
     # posprocess: `axis=1` so that spl(u).shape == np.shape(x)
     # when `x` is a list of 1D arrays (cf original splPrep)
