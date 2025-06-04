@@ -249,6 +249,7 @@ fpbacp( /* inputs*/
        int extrapolate,
        /* output */
        double *cptr,
+       double *fp,
        double *residualsptr
 );
 

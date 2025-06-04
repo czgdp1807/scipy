@@ -1891,7 +1891,7 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
                 len(t), False, True
             )         # modifies arguments in-place
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
-        c, residuals = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
+        c, residuals, fp = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
         if solve_for_p:
             return (R, A1, A2, Z), y_w, c, p, residuals
         else:

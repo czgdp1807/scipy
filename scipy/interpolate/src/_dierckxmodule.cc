@@ -215,6 +215,8 @@ py_fpbacp(PyObject* self, PyObject *args)
         return NULL;
     }
 
+    double fp = 0.0;
+
     try {
         // heavy lifting happens here
         // Check __fitpack.cc for implementation details
@@ -228,6 +230,7 @@ py_fpbacp(PyObject* self, PyObject *args)
                         static_cast<const double *>(PyArray_DATA(a_w)),
                         extrapolate,
                         static_cast<double *>(PyArray_DATA(a_c)),
+                        &fp,
                         static_cast<double *>(PyArray_DATA(a_residuals))
         );
     }
@@ -237,7 +240,8 @@ py_fpbacp(PyObject* self, PyObject *args)
     }
 
 
-    return Py_BuildValue("(NN)", PyArray_Return(a_c), PyArray_Return(a_residuals));
+    return Py_BuildValue("(NNN)", PyArray_Return(a_c),
+        PyArray_Return(a_residuals), PyFloat_FromDouble(fp));
 }
 
 

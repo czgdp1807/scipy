@@ -818,6 +818,7 @@ fpbacp( /* inputs*/
        int extrapolate,
        /* output */
        double *cptr,
+       double *fp,
        double *residualsptr) {
 
     int64_t nc = len_t - k - 1;
@@ -833,10 +834,9 @@ fpbacp( /* inputs*/
         c(i + offset, 0) = c(i, 0);
     }
 
-    double fp;
     _compute_residuals(
         xptr, m, yptr, ydim2, tptr, len_t,
-        wptr, k, extrapolate, nc, cptr, &fp, residualsptr
+        wptr, k, extrapolate, nc, cptr, fp, residualsptr
     );
 
 }

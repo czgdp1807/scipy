@@ -648,10 +648,9 @@ class Fperiodic:
             G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
 
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
-        c, residuals = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
+        c, _, fp = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
                             self.k, self.k + 1, self.x[:-1], self.y[:-1, None],
                             self.t, self.w[:-1])
-        fp = residuals.sum()
 
         spl = BSpline(self.t, c, self.k)
         self.spl = spl   # store it
