@@ -23,7 +23,7 @@ import numpy as np
 
 from ._bsplines import (
     _not_a_knot, make_interp_spline, BSpline, fpcheck, _lsq_solve_qr,
-    _periodic_knots
+    _lsq_solve_qr_for_root_rati, _periodic_knots
 )
 from . import _dierckx      # type: ignore[attr-defined]
 
@@ -613,8 +613,7 @@ class Fperiodic:
             # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L171-L215
             # The computation in the above link is performed for a
             # given set of knots i.e., t vector
-            (R, A1, A2, Z), _, _, _, _ = _lsq_solve_qr(
-                x, y, t, k, w, periodic=True, solve_for_p=True)
+            (R, A1, A2, Z), _, _, _, _ = _lsq_solve_qr_for_root_rati(x, y, t, k, w)
 
         # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L441-L493
         # Note the for H1 and H2, pinv is not multiplied in the initialisation step.
@@ -832,21 +831,15 @@ def _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic):
 
     # c  initial value for p.
     # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L253
-    solve_for_p = False
     if periodic:
         # N.B. - Check _lsq_solve_qr computation
         # of p for periodic splines
-        solve_for_p = True
-        R, Y, _, p, _ = _lsq_solve_qr(x, y, t, k, w,
-                                   periodic=periodic,
-                                   solve_for_p=solve_for_p)
+        R, A1, A2, Z, Y, _, p, _ = _lsq_solve_qr_for_root_rati(x, y, t, k, w)
     else:
         R, Y, _, _, _ = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
     nc = t.shape[0] -k -1
     if not periodic:
         p = nc / R[:, 0].sum()
-    else:
-        R, A1, A2, Z = R
 
     # ### bespoke solver ####
     # initial conditions
@@ -854,7 +847,7 @@ def _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic):
     # N.B. - Check _lsq_solve_qr which is called
     # via _get_residuals for logic behind
     # computation of fp for periodic splines
-    residuals, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic)
+    _, fp = _get_residuals(x, y, t, k, w=w, periodic=periodic)
     fpinf = fp - s
 
     # f(p=0): LSQ spline without internal knots

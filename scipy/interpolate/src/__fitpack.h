@@ -194,9 +194,7 @@ qr_reduce_periodic(double *aptr, double *h1, double *h2,   // a(m, nz), h1(m, nz
           double *a2ptr,                                   // A2(len_t - 2*k - 1, k)
           double *z,                                       // z(len_t - k - 1),
           bool init_p,
-          double &p,
-          bool get_fp,
-          double &fp
+          double &p
 );
 
 void qr_reduce_augmented_matrices(

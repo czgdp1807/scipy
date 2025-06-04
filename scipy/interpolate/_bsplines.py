@@ -1856,11 +1856,30 @@ def make_lsq_spline(x, y, t, k=3, w=None, axis=0, check_finite=True, *, method="
 # LSQ spline helpers #
 ######################
 
-def _compute_residuals(w2, splx, y):
-    delta = ((splx - y)**2).sum(axis=1)
-    return w2 * delta
+def _lsq_solve_qr_for_root_rati(x, y, t, k, w):
+    """Solve for the LSQ spline coeffs given x, y and knots.
 
-def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
+    `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
+    `w` is always 1D: one weight value per `x` value.
+
+    """
+    assert y.ndim == 2
+
+    y_w = y * w[:, None]
+    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
+    R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
+    assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
+    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
+    A1, A2, Z, p = _dierckx.qr_reduce_periodic(
+        R, H1, H2, offset, nc, y_w, k,
+        len(t), True
+    )         # modifies arguments in-place
+    # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
+    c, residuals, _ = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
+    return R, A1, A2, Z, y_w, c, p, residuals
+
+
+def _lsq_solve_qr(x, y, t, k, w, periodic=False):
     """Solve for the LSQ spline coeffs given x, y and knots.
 
     `y` is always 2D: for 1D data, the shape is ``(m, 1)``.
@@ -1880,22 +1899,12 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False, solve_for_p=False):
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
         assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
         # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
-        if solve_for_p:
-            A1, A2, Z, p = _dierckx.qr_reduce_periodic(
-                R, H1, H2, offset, nc, y_w, k,
-                len(t), True
-            )         # modifies arguments in-place
-        else:
-            A1, A2, Z, fp = _dierckx.qr_reduce_periodic(
-                R, H1, H2, offset, nc, y_w, k,
-                len(t), False, True
-            )         # modifies arguments in-place
+        A1, A2, Z = _dierckx.qr_reduce_periodic(
+            R, H1, H2, offset, nc, y_w, k,
+            len(t), False)         # modifies arguments in-place
         # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
         c, residuals, fp = _dierckx.fpbacp(A1, A2, Z, k, k, x, y, t, w)
-        if solve_for_p:
-            return (R, A1, A2, Z), y_w, c, p, residuals
-        else:
-            return R, y_w, c, fp, residuals
+        return R, y_w, c, fp, residuals
 
 
 
