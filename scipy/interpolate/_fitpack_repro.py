@@ -53,6 +53,8 @@ def _get_residuals(x, y, t, k, w, periodic=False):
     #           'residuals' are defined, see Eq. (42) in Dierckx1982
     #           (the reference is in the docstring of `class F`) below.
     _, _, _, fp, residuals = _lsq_solve_qr(x, y, t, k, w, periodic=periodic)
+    if np.isnan(residuals.sum()):
+        raise ValueError(_iermesg[1])
     return residuals, fp
 
 
@@ -248,12 +250,10 @@ def generate_knots(x, y, *, w=None, xb=None, xe=None,
         periodic=periodic
     )
 
-    yield from _generate_knots_impl(x, y, w=w, xb=xb, xe=xe,
-                                    k=k, s=s, nest=nest, periodic=periodic)
+    yield from _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic)
 
 
-def _generate_knots_impl(x, y, *, w=None, xb=None, xe=None,
-                         k=3, s=0, nest=None, periodic=False):
+def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
 
     acc = s * TOL
     m = x.size    # the number of data points
@@ -683,11 +683,15 @@ class Bunch:
         self.__dict__.update(**kwargs)
 
 
-_iermesg = {
-2: """error. a theoretically impossible result was found during
+_iermesg1 = """error. a theoretically impossible result was found during
 the iteration process for finding a smoothing spline with
 fp = s. probably causes : s too small.
-there is an approximation returned but the corresponding
+"""
+
+_iermesg = {
+1: _iermesg1 + """the weighted sum of squared residuals is becoming NaN
+""",
+2: _iermesg1 + """there is an approximation returned but the corresponding
 weighted sum of squared residuals does not satisfy the
 condition abs(fp-s)/s < tol.
 """,
@@ -794,8 +798,7 @@ def root_rati(f, p0, bracket, acc):
     return Bunch(converged=converged, root=p, iterations=it, ier=ier)
 
 
-def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
-                      k=3, s=0, t=None, nest=None, periodic=False):
+def _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic):
     """Shared infra for make_splrep and make_splprep.
     """
     acc = s * TOL
@@ -816,8 +819,7 @@ def _make_splrep_impl(x, y, *, w=None, xb=None, xe=None,
             raise ValueError("Either supply `t` or `nest`.")
 
     if t is None:
-        gen = _generate_knots_impl(x, y, w=w, k=k, s=s, xb=xb, xe=xe,
-                                   nest=nest, periodic=periodic)
+        gen = _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic)
         t = list(gen)[-1]
     else:
         fpcheck(x, t, k)
@@ -1043,9 +1045,7 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None,
     x, y, w, k, s, xb, xe = _validate_inputs(x, y, w, k, s, xb, xe,
                                              parametric=False, periodic=periodic)
 
-    spl = _make_splrep_impl(x, y, w=w, xb=xb, xe=xe,
-                            k=k, s=s, t=t, nest=nest,
-                            periodic=periodic)
+    spl = _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic)
 
     # postprocess: squeeze out the last dimension: was added to simplify the internals.
     spl.c = spl.c[:, 0]
@@ -1189,7 +1189,7 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
 
     u, x, w, k, s, ub, ue = _validate_inputs(u, x, w, k, s, ub, ue, parametric=True)
 
-    spl = _make_splrep_impl(u, x, w=w, xb=ub, xe=ue, k=k, s=s, t=t, nest=nest)
+    spl = _make_splrep_impl(u, x, w, ub, ue, k, s, t, nest)
 
     # posprocess: `axis=1` so that spl(u).shape == np.shape(x)
     # when `x` is a list of 1D arrays (cf original splPrep)
