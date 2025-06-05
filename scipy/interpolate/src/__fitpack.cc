@@ -1320,33 +1320,6 @@ _coloc_nd(/* inputs */
     return 0;
 }
 
-/*
-Computes fp0 for constant function.
-Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
-*/
-double
-get_residual_p0(/* inputs */
-            const double *yptr,      // y, shape (m, 1)
-            const double *wptr,      // w, shape (m,)
-            int64_t m
-) {
-    auto y = ConstRealArray2D(yptr, m, 1);
-    auto w = ConstRealArray1D(wptr, m);
-
-    double fp0 = 0.0, d1 = 0.0, c1 = 0.0;
-    for( int64_t it = 0; it < m - 1; it++ ) {
-        double wi = w(it);
-        double yi = y(it, 0) * wi;
-        double c, s, r;
-        DLARTG(&d1, &wi, &c, &s, &r);
-        d1 = r;
-        std::tie(c1, yi) = fprota(c, s, c1, yi);
-        fp0 = fp0 + yi*yi;
-    }
-
-    return fp0;
-}
-
 // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L441-L493
 // Note that H1 and H2 are not multipled by pinv here. It is done in the iterative step just before
 // QR reduction of agumented matrices happens.

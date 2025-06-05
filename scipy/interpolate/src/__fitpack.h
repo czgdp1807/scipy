@@ -160,13 +160,6 @@ data_matrix_periodic( /* inputs */
     double *wrk                        // work, shape (2k+2)
 );
 
-double
-get_residual_p0(/* inputs */
-            const double *yptr,      // y, shape (m, 1)
-            const double *wptr,      // w, shape (m,)
-            int64_t m
-);
-
 /*
     Solve the LSQ problem ||y - A@c||^2 via QR factorization.
     This routine MODIFIES `a` & `y` in-place.

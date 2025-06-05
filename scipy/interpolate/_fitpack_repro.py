@@ -285,17 +285,17 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
     # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
     # Computes fp0 for constant function
     if periodic:
-        fpold = _dierckx.get_residual_p0(y, w)
+        t = np.zeros(nmin, dtype=float)
+        for i in range(0, k + 1):
+            t[i] = x[0] - (k - i) * per
+            t[i + k + 1] = x[m - 1] + i * per
+        _, fp = _get_residuals(x, y, t, k, w, periodic=periodic)
         # For periodic splines, check whether constant function
         # satisfies accuracy criterion
         # Also if maximal number of nodes is equal to the minimal
         # then constant function is the direct solution
         # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L600-L610
-        if fpold - s < acc or nmax == nmin:
-            t = np.zeros(nmin, dtype=float)
-            for i in range(0, k + 1):
-                t[i] = x[0] - (k - i) * per
-                t[i + k + 1] = x[m - 1] + i * per
+        if fp - s < acc or nmax == nmin:
             yield t
             return
 
@@ -860,8 +860,12 @@ def _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic):
         assert(y.shape[1] == 1)
         # f(p=0) is fp for constant function
         # in case of periodic splines
-        # get_residual_p0 computes the same.
-        fp0 = _dierckx.get_residual_p0(y, w)
+        per = xe - xb
+        tc = np.zeros(2*(k + 1), dtype=float)
+        for i in range(0, k + 1):
+            tc[i] = x[0] - (k - i) * per
+            tc[i + k + 1] = x[m - 1] + i * per
+        _, fp0 = _get_residuals(x, y, tc, k, w, periodic=periodic)
         fp0 = fp0 - s
 
     # solve
