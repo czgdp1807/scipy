@@ -3518,6 +3518,15 @@ class TestMakeSplrepBase:
         spl_2 = make_splrep(x, y + 1/(1+y), k=k, s=1e-5, bc_type=self.bc_type)
         assert spl_2.c.ndim == 1
 
+    def test_error_on_invalid_bc_type(self):
+        N = 10
+        a, b = 0, 2*np.pi
+        x = np.linspace(a, b, N + 1)    # nodes
+        y = np.exp(x)
+
+        with assert_raises(ValueError):
+            make_splrep(x, y, s=1e-8, bc_type="nonsense")
+
 class TestMakeSplrep(TestMakeSplrepBase):
 
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
