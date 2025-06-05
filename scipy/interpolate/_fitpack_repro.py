@@ -284,8 +284,8 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
     per = xe - xb
     # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
     # Computes fp0 for constant function
-    fpold = _dierckx.get_residual_p0(y, w)
     if periodic:
+        fpold = _dierckx.get_residual_p0(y, w)
         # For periodic splines, check whether constant function
         # satisfies accuracy criterion
         # Also if maximal number of nodes is equal to the minimal
@@ -377,7 +377,6 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
             if j < nplus - 1:
                 residuals, _ = _get_residuals(x, y, t, k, w=w, periodic=periodic)
 
-        fpold = fp
     # this should never be reached
     return
 
