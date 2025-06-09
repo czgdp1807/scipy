@@ -276,13 +276,13 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
         nmax = m + k + 1  # the number of knots for the spline interpolation
     else:
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L54
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L54
         nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L61
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L61
         nmax = m + 2*k  # the number of knots for the spline interpolation
 
     per = xe - xb
-    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L107-L123
+    # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L107-L123
     # Computes fp0 for constant function
     if periodic:
         t = np.zeros(nmin, dtype=float)
@@ -294,7 +294,7 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
         # satisfies accuracy criterion
         # Also if maximal number of nodes is equal to the minimal
         # then constant function is the direct solution
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L600-L610
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L600-L610
         if fp - s < acc or nmax == nmin:
             yield t
             return
@@ -303,7 +303,7 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
     if not periodic:
         t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
     else:
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L131
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L131
         # For periodic splines initial set of knots is all zeros except (k + 2)-th knot
         t = np.zeros(2*k + 3, dtype=float)
         t[k + 1] = x[(m + 1)//2 - 1]
@@ -315,7 +315,7 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
     # c  main loop for the different sets of knots. m is a safe upper bound
     # c  for the number of trials.
     for iter in range(m):
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L147-L158
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L147-L158
         if periodic:
             n = t.shape[0]
             t[k] = xb
@@ -326,9 +326,6 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
         yield t
 
         # construct the LSQ spline with this set of knots
-        # N.B. - Check _lsq_solve_qr which is called
-        # via _get_residuals for logic behind
-        # computation of fp for periodic splines
         fpold = fp
         residuals, fp = _get_residuals(x, y, t, k, w=w,
                                         periodic=periodic)

@@ -1866,10 +1866,10 @@ def _lsq_solve_qr_for_root_rati(x, y, t, k, w):
     assert y.ndim == 2
 
     y_w = y * w[:, None]
-    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
+    # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L221-L238
     R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
     assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
-    # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
+    # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L239-L314
     A1, A2, Z, p = _dierckx.qr_reduce_periodic(
         R, H1, H2, offset, nc, y_w, k,
         len(t), True
@@ -1895,10 +1895,10 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False):
         c, residuals, fp = _dierckx.fpback(A, nc, x, y, t, k, w, y_w)
         return A, y_w, c, fp, residuals
     else:
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L221-L238
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L221-L238
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
         assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L239-L314
+        # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L239-L314
         A1, A2, Z = _dierckx.qr_reduce_periodic(
             R, H1, H2, offset, nc, y_w, k,
             len(t), False)         # modifies arguments in-place
