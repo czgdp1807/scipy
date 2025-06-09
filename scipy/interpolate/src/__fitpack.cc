@@ -1367,14 +1367,52 @@ _coloc_nd(/* inputs */
     return 0;
 }
 
-// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L441-L493
-// Note that H1 and H2 are not multipled by pinv here. It is done in the iterative step just before
-// QR reduction of agumented matrices happens.
+/**
+ * Initialize augmented matrices for periodic B-spline fitting system.
+ *
+ * This function prepares the augmented banded matrices used in FITPACK's
+ * periodic spline fitting algorithm. It expands and reorganizes the original
+ * banded matrices (a1, a2, b) into augmented forms (g1, g2, h1, h2) that
+ * incorporate periodic boundary conditions by linking the "head" and "tail"
+ * parts of the spline basis. The offset array stores index adjustments for
+ * wrap-around effects in the periodic system.
+ *
+ * Parameters:
+ * a1ptr: (len_t - k - 1) x (k + 1)
+ *        Original main banded matrix `a1` data.
+ *        Represents the core system matrix for spline fitting normal equations.
+ * a2ptr: (len_t - 2*k - 1) x k
+ *        Original secondary banded matrix `a2` data.
+ *        Contains coupling coefficients related to periodic boundary conditions.
+ * bptr: (len_t - 2*k - 2) x (k + 2)
+ *       Periodic constraints matrix `b`.
+ *       Encodes the periodic tail-head interactions in the spline basis.
+ * k: Spline degree.
+ * len_t: Length of the knot vector.
+ * g1ptr: (len_t - 2*k - 1) x (k + 2)
+ *        Output augmented matrix `g1`.
+ *        Augmented version of `a1` matrix, extended for periodicity.
+ * g2ptr: (len_t - 2*k - 1) x (k + 1)
+ *        Output augmented matrix `g2`.
+ *        Augmented version of `a2` with an extra zero column for periodic effects.
+ * h1ptr: (len_t - 2*k - 2) x (k + 2)
+ *        Output matrix `h1`.
+ *        Holds periodic contributions related to the "head" part of spline basis.
+ * h2ptr: (len_t - 2*k - 2) x (k + 1)
+ *        Output matrix `h2`.
+ *        Holds periodic contributions complementary to `h1`.
+ * offsetptr: (len_t - 2*k - 2)
+ *            Output offset array.
+ *            Contains index offsets used for wrap-around indexing in periodic system.
+ */
 void init_augmented_matrices(
     double *a1ptr, double *a2ptr, double *bptr,
     int k, int64_t len_t,
     double *g1ptr, double *g2ptr,
     double *h1ptr, double *h2ptr, double *offsetptr) {
+
+    // Wrap raw pointers as 2D arrays of appropriate sizes
+    // These matrices come from banded system representations in FITPACK
     auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
     auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
     auto a1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);
@@ -1386,14 +1424,38 @@ void init_augmented_matrices(
 
     int64_t l0, l, l1;
 
+    // --------------------------------------------------------------------
+    // Copy matrix a1 into g1, extending the original banded system matrix.
+    //
+    // a1:
+    //  - Represents the main banded matrix from the spline normal equations
+    //  - Size corresponds to spline basis dimension minus degree adjustments
+    //
+    // g1:
+    //  - Augmented matrix version of a1, extended with an extra column (k+2 instead of k+1)
+    //  - Purpose: to incorporate periodic boundary conditions by increasing band size
+    // --------------------------------------------------------------------
     for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
         for( int64_t j = 0; j < k + 1; j++ ) {
             g1(i, j) = a1(i, j);
         }
     }
+    // Last column is zero-padded because g1 has one extra column compared to a1
     for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
         g1(i, k + 1) = 0.0;
     }
+
+    // --------------------------------------------------------------------
+    // Initialize first column of g2 to zero and fill remaining from a2
+    //
+    // a2:
+    //  - Represents off-diagonal banded matrix terms in the original system
+    //  - Corresponds to interactions related to the periodic part of the spline
+    //
+    // g2:
+    //  - Augmented version of a2 with an additional zero column at start
+    //  - First column zero to separate periodic contribution
+    // --------------------------------------------------------------------
     for( int64_t i = 0; i < len_t - 2*k - 1; i++ ) {
         g2(i, 0) = 0.0;
     }
@@ -1403,6 +1465,13 @@ void init_augmented_matrices(
         }
     }
 
+    // --------------------------------------------------------------------
+    // Special case: Fill first column of g2 at the bottom with values from a1
+    // This enforces the periodic wrap-around conditions on the system matrix
+    // by linking last rows back to first columns.
+    //
+    // This is critical in periodic splines where basis functions "wrap around".
+    // --------------------------------------------------------------------
     l = len_t - 3*k - 1;
     for( int64_t j = 0; j < k + 1; j++ ) {
         if( l <= 0 ) {
@@ -1412,20 +1481,38 @@ void init_augmented_matrices(
         l = l - 1;
     }
 
+    // --------------------------------------------------------------------
+    // Initialize h1, h2, and offset matrices which represent
+    // the "periodic" part of the augmented system.
+    //
+    // h1, h2:
+    //  - These matrices correspond to coefficients that arise from the
+    //    periodic boundary conditions and wrapping in the banded matrix system.
+    //  - They hold contributions from the "tail" of the spline basis interacting
+    //    with the "head" due to periodicity.
+    //
+    // b:
+    //  - Input matrix containing the periodic constraints and interactions.
+    //
+    // offset:
+    //  - Stores the integer shifts needed for correct indexing in
+    //    the augmented periodic system (wrap-around shifts).
+    // --------------------------------------------------------------------
     for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
-
-        // fetch a new row of matrix b and store it in the arrays h1 (the part
-        // with respect to g1) and h2 (the part with respect to g2).
+        // Zero out current row for h1 and h2
         for( int64_t i = 0; i < k + 1; i++ ) {
             h1(it - 1, i) = 0;
             h2(it - 1, i) = 0;
         }
         h1(it - 1, k + 1) = 0;
+
         if( it <= len_t - 3*k - 2 ) {
+            // Fill h1 and h2 with rows from b matrix while handling wrap-around
             l = it;
             l0 = it;
             for( int64_t j = 1; j <= k + 2; j++ ) {
                 if( l0 == len_t - 3*k - 1 ) {
+                    // If boundary reached, wrap and continue filling h2 from b
                     l0 = 1;
                     for( int64_t l1 = j; l1 <= k + 2; l1++ ) {
                         h2(it - 1, l0 - 1) = b(it - 1, l1 - 1);
@@ -1433,30 +1520,38 @@ void init_augmented_matrices(
                     }
                     break;
                 }
+                // Normal assignment to h1 from b
                 h1(it - 1, j - 1) = b(it - 1, j - 1);
                 l0 = l0 + 1;
             }
         } else {
+            // For rows beyond boundary, distribute elements from b to h1 and h2
+            // according to periodic wrap-around indexing logic
             l = 1;
             int64_t i = it - (len_t - 3*k - 1);
             for( int64_t j = 1; j <= k + 2; j++ ) {
                 i = i + 1;
                 l0 = i;
                 l1 = l0 - (k + 1);
+
+                // Adjust indices for wrap-around within allowed bounds
                 while( l1 > std::max((int64_t) 0, len_t - 3*k - 2) ) {
                     l0 = l1 - (len_t - 3*k - 2);
                     l1 = l0 - (k + 1);
                 }
+
                 if( l1 > 0 ) {
                     h1(it - 1, l1 - 1) = b(it - 1, j - 1);
                 } else {
-                    h2(it - 1, l0 - 1) = h2(it - 1, l0 - 1) + b(it - 1, j - 1);
+                    // Accumulate values in h2 for remaining wrapped positions
+                    h2(it - 1, l0 - 1) += b(it - 1, j - 1);
                 }
             }
         }
-
+        // Store the offset for this row for index calculations in periodic solver
         offset(it - 1) = l;
     }
 }
+
 
 } // namespace fitpack
