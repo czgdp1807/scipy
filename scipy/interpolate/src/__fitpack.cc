@@ -597,72 +597,161 @@ void qr_reduce_periodic(
     }
 }
 
-
-// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
-// Performs QR decomposition of augmented matrices with H1 and H2.
+/**
+ * Applies QR reduction on augmented matrices using Givens rotations.
+ *
+ * Example for k=1, len_t=7 (small sizes):
+ *
+ * Dimensions:
+ *   g1: (4 x 3), g2: (4 x 2)
+ *   h1: (3 x 3), h2: (3 x 2)
+ *   c : (5 x 1), offset: (3)
+ *
+ * Initial matrices (example values):
+ * g1 = [ [3.0, 2.0, 1.0],
+ *        [4.0, 3.0, 2.0],
+ *        [5.0, 4.0, 3.0],
+ *        [6.0, 5.0, 4.0] ]
+ *
+ * g2 = [ [1.0, 2.0],
+ *        [2.0, 3.0],
+ *        [3.0, 4.0],
+ *        [4.0, 5.0] ]
+ *
+ * h1 = [ [2.0, 1.0, 0.0],
+ *        [1.0, 2.0, 1.0],
+ *        [0.0, 1.0, 2.0] ]
+ *
+ * h2 = [ [1.0, 0.0],
+ *        [0.0, 1.0],
+ *        [1.0, 1.0] ]
+ *
+ * c = [ [1.0],
+ *       [1.5],
+ *       [2.0],
+ *       [2.5],
+ *       [3.0] ]
+ *
+ * offset = [1, 1, 2]
+ *
+ * Iteration it=1:
+ * - offset(0) = 1
+ * - For j=1 to 2:
+ *    * piv = h1(0,0) = 2.0
+ *    * Apply Givens rotation on (g1(0,0)=3.0, piv=2.0) to zero out h1(0,0):
+ *       - Compute (cos, sin, r) so that:
+ *         [cos sin; -sin cos] * [3.0; 2.0] = [r; 0]
+ *       - Example result: r=3.6056, cos=0.8321, sin=0.5547
+ *    * Update g1(0,0) = r = 3.6056
+ *    * Rotate c(0,0) and yi=0 with (cos,sin), c(0,0) ≈ 0.8321, yi ≈ -0.5547
+ *    * For h2i in 0 to 1:
+ *      - Rotate pairs (g2(0,h2i), h2(0,h2i)) with same rotation
+ *    * For h1i in 1 to min(k+1, remaining cols):
+ *      - Rotate pairs (g1(0,h1i), h1(0,h1i))
+ *    * Shift h1 row left and zero last element
+ *
+ * Result:
+ *   h1(0,0) is zeroed,
+ *   corresponding elements in g1, g2, h2, c updated to maintain orthogonality.
+ *
+ * Subsequent iterations it=2, it=3 do similar Givens rotations to reduce
+ * matrices further towards upper-triangular form for stable solving.
+ *
+ * Purpose:
+ * - Systematically eliminate entries in h1, h2 (constraint matrices)
+ * - Update g1, g2 (main matrices) and c (solution vector)
+ * - Prepare system for efficient and stable spline coefficient computation
+ */
 void qr_reduce_augmented_matrices(
     double* g1ptr, double* g2ptr,
     double* h1ptr, double* h2ptr,
     double* cptr, double* offsetptr,
     int k, int64_t len_t
 ) {
-    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);
-    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);
-    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);
-    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);
-    auto c = RealArray2D(cptr, len_t - k - 1, 1);
-    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2);
+    auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);  // Main block matrix part 1
+    auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);  // Main block matrix part 2
+    auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);  // Constraint matrix part 1 (to be zeroed out)
+    auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);  // Constraint matrix part 2 (to be zeroed out)
+    auto c = RealArray2D(cptr, len_t - k - 1, 1);          // Right-hand side vector (updated during rotations)
+    auto offset = RealArray1D(offsetptr, len_t - 2*k - 2); // Offset array, starting row for rotations
 
-    // Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L495-L533
+    // Iterate over rows in the augmented matrix system (h1, h2 rows)
     for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
-        double yi = 0.0;
+        double yi = 0.0; // Auxiliary variable to hold rotated value of c
+
+        // Perform Givens rotations to zero out entries in h1 and update g1, g2, h2, c accordingly
         for( int64_t j = offset(it - 1); j <= len_t - 3*k - 2; j++ ) {
+            // Pivot element from h1 that we want to zero out using rotation
             double piv = h1(it - 1, 0);
 
             double cos, sin, r;
+
+            // Compute Givens rotation parameters (cos, sin) to zero out piv when applied to g1(j-1,0)
+            // This solves: [cos sin; -sin cos] * [g1(j-1,0); piv] = [r; 0]
             DLARTG(&g1(j - 1, 0), &piv, &cos, &sin, &r);
+
+            // Update g1 with the rotated value r (magnitude after rotation)
             g1(j - 1, 0) = r;
 
+            // Apply the same rotation to c(j-1, 0) and yi (c vector updated to maintain system consistency)
             std::tie(c(j - 1, 0), yi) = fprota(cos, sin, c(j - 1, 0), yi);
 
+            // Rotate pairs of elements in g2 and h2 with the same rotation to maintain orthogonality
             for( int64_t h2i = 0; h2i < k + 1; h2i++ ) {
                 std::tie(g2(j - 1, h2i), h2(it - 1, h2i)) = fprota(cos, sin, g2(j - 1, h2i), h2(it - 1, h2i));
             }
 
+            // If reached the last j in the loop, break since no more elements to rotate
             if( j == (len_t - 3*k - 2) ) {
                 break ;
             }
 
+            // Calculate number of elements to rotate between g1 and h1 for this step
             int64_t i2 = std::min(len_t - 3*k - 2 - j, (int64_t) k + 1) + 1;
+
+            // Rotate pairs of elements in g1 and h1 with the same rotation for indices > 0
             for( int64_t h1i = 1; h1i < i2; h1i++ ) {
                 std::tie(g1(j - 1, h1i), h1(it - 1, h1i)) = fprota(cos, sin, g1(j - 1, h1i), h1(it - 1, h1i));
             }
 
+            // Shift h1 row left by one position to remove the zeroed element and set last to zero
             for( int64_t h1i = 1; h1i <= (i2 - 1); h1i++ ) {
                 h1(it - 1, h1i - 1) = h1(it - 1, h1i);
             }
-            h1(it - 1, i2 - 1) = 0.0;
+            h1(it - 1, i2 - 1) = 0.0; // Clear last shifted position (zeroed out)
         }
 
+        // Now handle rotations on h2 part to zero out entries similarly
         for( int64_t j = 1; j <= k + 1; j++ ) {
-            int64_t ij = len_t - 3*k - 2 + j;
+            int64_t ij = len_t - 3*k - 2 + j; // Index in g2 to rotate with h2
+
             if( ij <= 0 ) {
-                continue;
+                continue; // Skip if index out of bounds (safety check)
             }
+
+            // Pivot element from h2 to be zeroed
             double piv = h2(it - 1, j - 1);
 
             double cos, sin, r;
+
+            // Compute Givens rotation parameters to zero out pivot against g2(ij-1, j-1)
             DLARTG(&g2(ij - 1, j - 1), &piv, &cos, &sin, &r);
+
+            // Update g2 with rotated magnitude
             g2(ij - 1, j - 1) = r;
 
+            // Rotate c(ij-1, 0) and yi with the same rotation to keep system consistent
             std::tie(c(ij - 1, 0), yi) = fprota(cos, sin, c(ij - 1, 0), yi);
 
+            // If this is the last column in h2 for this row, break early
             if( j == k + 1) {
-                break ;
+                break;
             }
 
+            // Rotate remaining pairs in g2 and h2 in the same row with the rotation
             for( int64_t h2i = j + 1; h2i <= k + 1; h2i++ ) {
-                std::tie(g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1)) = fprota(cos, sin, g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1));
+                std::tie(g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1)) = fprota(
+                    cos, sin, g2(ij - 1, h2i - 1), h2(it - 1, h2i - 1));
             }
         }
     }
