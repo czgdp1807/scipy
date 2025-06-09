@@ -171,35 +171,54 @@ data_matrix( /* inputs */
     *nc = len_t - k - 1;
 }
 
-// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L181-L195
-// and
-// Ref: https://github.com/scipy/scipy/blob/10f63b25d1e040cca3d7319dc2edff0c31ef8b7a/scipy/interpolate/fitpack/fpperi.f#L221-L238
-// For given set of knots, computes H1 and H2 for all the data points except the last.
-// Check the above link for semantics of H1 and H2.
+/*
+ * Constructs the data matrix A for periodic B-spline basis functions.
+ *
+ * Inputs:
+ *  - xptr: array of x values, shape (m,)
+ *  - m: number of data points
+ *  - tptr: knot vector, shape (len_t,)
+ *  - len_t: length of knot vector
+ *  - k: spline degree
+ *  - wptr: weights for each x value, shape (m,)
+ *  - extrapolate: whether extrapolation outside knot range is allowed
+ *
+ * Outputs:
+ *  - Aptr: output matrix A, shape (m, k+1), holds basis function values
+ *  - H1ptr: periodic correction matrix H1, shape (m, k+1)
+ *  - H2ptr: periodic correction matrix H2, shape (m, k)
+ *  - offset_ptr: index array of shape (m,), each x lies in knot interval [offset(i) + k, offset(i) + k + 1)
+ *  - nc: number of spline coefficients (len_t - k - 1)
+ *
+ * Work array:
+ *  - wrk: temporary workspace of size (2k + 2), used by De Boor’s algorithm
+ */
 void
 data_matrix_periodic( /* inputs */
-            const double *xptr, int64_t m,      // x, shape (m,)
-            const double *tptr, int64_t len_t,  // t, shape (len_t,)
+            const double *xptr, int64_t m,
+            const double *tptr, int64_t len_t,
             int k,
-            const double *wptr,                 // weights, shape (m,) // NB: len(w) == len(x), not checked
+            const double *wptr,
             int extrapolate,
             /* outputs */
-            double *Aptr,                       // A, shape(m, k+1)
-            double *H1ptr,                      // H1, shape(m, k+1)
-            double *H2ptr,                      // H2, shape(m, k+1)
-            int64_t *offset_ptr,                // offset, shape (m,)
-            int64_t *nc,                        // the number of coefficient
+            double *Aptr,
+            double *H1ptr,
+            double *H2ptr,
+            int64_t *offset_ptr,
+            int64_t *nc,
             /* work array*/
-            double *wrk)                        // work, shape (2k+2)
+            double *wrk)
 {
+    // Wrap raw input pointers into readable array types
     auto x = ConstRealArray1D(xptr, m);
     auto t = ConstRealArray1D(tptr, len_t);
     auto w = ConstRealArray1D(wptr, m);
-    auto A = RealArray2D(Aptr, m, k+1);
-    auto H1 = RealArray2D(H1ptr, m, k+1);
+    auto A = RealArray2D(Aptr, m, k + 1);
+    auto H1 = RealArray2D(H1ptr, m, k + 1);
     auto H2 = RealArray2D(H2ptr, m, k);
     auto offset = Array1D<int64_t, false>(offset_ptr, m);
 
+    // Initialize H1 and H2 to zeros
     for( int64_t i = 0; i < m; i++ ) {
         for( int64_t j = 0; j < k; j++ ) {
             H1(i, j) = 0.0;
@@ -208,53 +227,83 @@ data_matrix_periodic( /* inputs */
         H1(i, k) = 0.0;
     }
 
+    // Start search for x interval from index k (first possible non-zero region)
     int64_t ind = k;
+
+    // Loop through each x value to construct rows of A, H1, H2
     for (int i=0; i < m; ++i) {
         double xval = x(i);
 
-        // find the interval
+        // Find index `ind` such that t[ind] <= xval < t[ind + 1]
         ind = _find_interval(t.data, len_t, k, xval, ind, extrapolate);
-        if (!extrapolate && (ind < 0)){
-            // should not happen here, validation is expected on the python side
+
+        // Handle invalid case: x out of knot range and extrapolation not allowed
+        if (!extrapolate && ind < 0) {
             throw std::runtime_error("find_interval: out of bounds with x = " + std::to_string(xval));
         }
+
+        // Set offset for this row, used for placing basis functions globally
         int64_t offseti = ind - k;
         offset(i) = offseti;
 
-        // compute non-zero b-splines
+        // Compute the k+1 non-zero B-spline basis values at xval
         _deBoor_D(t.data, xval, k, ind, 0, wrk);
 
-        for (int64_t j=0; j < k+1; ++j) {
+        // Fill A matrix with weighted basis values
+        for (int64_t j = 0; j < k + 1; ++j) {
             A(i, j) = wrk[j] * w(i);
         }
 
+        // ---- PERIODIC CORRECTION HANDLING ----
+        // Periodic correction is needed when x lies near the end of the knot vector.
+        // In such cases, some B-spline basis functions wrap around due to periodicity.
+        // This means their influence spills over from the end of the domain to the beginning.
+
+        // If x lies in the last 2k intervals of the knot vector, apply correction.
         int64_t l = ind + 1;
-        if( l >= len_t - 2*k ) {
+        if (l >= len_t - 2*k) {
             int64_t j;
-            for( j=0; j < k; ++j ) {
+            // First, reset H1 and H2 for the current row to zero
+            for (int64_t j = 0; j < k; ++j) {
                 H1(i, j) = 0;
                 H2(i, j) = 0;
             }
             H1(i, k) = 0;
 
+            // Initialize j to the index offset for periodic correction
             j = l - len_t + 2*k;
-            for( int64_t i1 = 0; i1 < k+1; i1++ ) {
-                j = j + 1;
+
+            // Loop over all (k+1) non-zero B-spline basis functions
+            for (int64_t i1 = 0; i1 < k+1; i1++) {
+                j += 1;
+
+                // l0: shifted index in extended domain
                 int64_t l0 = j;
+
+                // l1: corresponding "wrapped" index in original coefficient space
                 int64_t l1 = l0 - k;
+
+                // If l1 is still out of valid range, wrap it again until it fits
                 while (l1 > std::max(int64_t(0), len_t - 3*k - 1)) {
+                    // Apply modular arithmetic to wrap l1 to the start
                     l0 = l1 - len_t + 3*k + 1;
                     l1 = l0 - k;
                 }
+
+                // Now assign weighted basis value to H1 or H2 depending on index
                 if( l1 > 0 ) {
+                    // Normal wrap-around: put contribution into H1
                     H1(i, l1 - 1) = wrk[i1] * w(i);
                 } else {
-                    H2(i, l0 - 1) = H2(i, l0 - 1) + wrk[i1] * w(i);
+                    // Negative wrap-around: accumulate contribution into H2
+                    // This ensures full periodic coverage even for overlapping parts
+                    H2(i, l0 - 1) += wrk[i1] * w(i);
                 }
             }
         }
     }
 
+    // Set total number of coefficients = number of intervals = len(t) - k - 1
     *nc = len_t - k - 1;
 }
 
