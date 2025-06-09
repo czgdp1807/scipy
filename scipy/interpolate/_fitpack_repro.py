@@ -583,44 +583,121 @@ class F:
 
         return fp - self.s
 
-# Solver class for f(p) for periodic splines
 class Fperiodic:
+    """
+    Fit a smooth periodic B-spline curve to given data points.
+
+    This class fits a periodic B-spline curve S(t) of degree k through data points (x, y)
+    with knots t. The spline is smooth and repeats itself at the start and end, meaning
+    the function and its derivatives up to order k-1 are equal at the boundaries.
+
+    We want to find spline coefficients c that minimize the difference between the spline
+    and the data, while also keeping the spline smooth. This is done by solving:
+
+        minimize || W^{1/2} (Y - B c) ||^2 + s * c^T @ R @ c
+        subject to periodic constraints on c.
+
+    where:
+      - Y is the data values,
+      - B is the matrix of B-spline basis functions at points x,
+      - W is a weighting matrix for the data points,
+      - s is the smoothing parameter (larger s means smoother curve),
+      - R is a matrix that penalizes wiggliness of the spline,
+      - c spline coefficients to be solved for
+      - periodic constraints ensure the spline repeats smoothly.
+
+    The solution is obtained by forming augmented matrices and performing a QR factorization
+    that incorporates these constraints, following the approach in FITPACK's `fpperi.f`.
+
+    Parameters:
+    -----------
+    x : array_like, shape (n,)
+    y : array_like, shape (n, m)
+    t : array_like, shape (nt,)
+        Knot vector for the spline
+    k : int
+        Degree of the spline.
+    s : float
+        Controls smoothness: bigger s means smoother curve, smaller s fits data closer.
+    w : array_like, shape (n,), optional
+        Weights for data points. Defaults to all ones.
+    R, Y, A1, A2, Z : arrays, optional
+        Precomputed matrices from least squares and QR factorization steps to speed up
+        repeated fits with the same knots and data.
+
+    Attributes:
+    -----------
+    G1, G2 : arrays
+        Augmented matrices combining the original QR factors and constraints related to
+        the spline basis and data. G1 is roughly the "upper-triangular" part; G2 contains
+        additional constraint information for periodicity.
+
+    H1, H2 : arrays
+        Matrices associated with the discontinuity jump constraints of the k-th derivative
+        of B-splines at the knots. These encode the periodicity conditions and are scaled
+        by the smoothing parameter.
+
+    offset : array
+        Offset indices used for efficient indexing during QR reduction.
+
+    Methods:
+    --------
+    __call__(p):
+        Perform QR reduction of augmented matrices scaled by 1/p, solve for spline
+        coefficients, and return residual difference fp - s.
+
+    References:
+    -----------
+    - FITPACK's fpperi.f and fpcurf.f Fortran routines for periodic spline fitting.
+    """
     def __init__(self, x, y, t, k, s, w=None, *,
                  R=None, Y=None, A1=None, A2=None, Z=None):
+        # Initialize the class with input data points x, y,
+        # knot vector t, spline degree k, smoothing factor s,
+        # optional weights w, and optionally precomputed matrices.
         self.x = x
         self.y = y
         self.t = t
         self.k = k
+
+        # If weights not provided, default to uniform weights (all ones)
         w = np.ones_like(x, dtype=float) if w is None else w
+
         if w.ndim != 1:
             raise ValueError(f"{w.ndim = } != 1.")
         self.w = w
+
         self.s = s
 
         if y.ndim != 2:
             raise ValueError(f"F: expected y.ndim == 2, got {y.ndim = } instead.")
 
-        # ### precompute what we can ###
+        # ### precompute matrices and factors needed for spline fitting ###
 
-        # https://github.com/scipy/scipy/blob/maintenance/1.11.x/scipy/interpolate/fitpack/fpcurf.f#L250
-        # c  evaluate the discontinuity jump of the kth derivative of the
-        # c  b-splines at the knots t(l),l=k+2,...n-k-1 and store in b.
+        # Compute the discontinuity jump vector 'b' for the k-th derivative
+        # of B-splines at internal knots. This is needed for enforcing
+        # periodicity constraints. The jump discontinuities are stored in b.
+        # Refer: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpcurf.f#L252
         b, b_offset, b_nc = disc(t, k)
 
-        # the QR factorization of the data matrix, if not provided
-        # NB: otherwise, must be consistent with x,y & s, but this is not checked
+        # If QR factorization or auxiliary matrices (A1, A2, Z) are not provided,
+        # compute them via least squares on the data (x,y) with weights w.
+        # These matrices come from fitting B-spline basis to data.
         if ((A1 is None or A2 is None or Z is None) or
             (R is None and Y is None)):
-            # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L171-L215
-            # The computation in the above link is performed for a
-            # given set of knots i.e., t vector
+            # _lsq_solve_qr_for_root_rati computes QR factorization of
+            # data matrix and returns related matrices.
+            # Refer: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L171-L215
             (R, A1, A2, Z), _, _, _, _ = _lsq_solve_qr_for_root_rati(x, y, t, k, w)
 
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L441-L493
-        # Note the for H1 and H2, pinv is not multiplied in the initialisation step.
-        # Check __call__ for multiplication of pinv with H1 and H2 respectively
+        # Initialize augmented matrices G1, G2, H1, H2 and offset used
+        # for periodic B-spline fitting with constraints.
+        # This calls the C++ function `init_augmented_matrices` to set
+        # up these matrices based on A1, A2, and discontinuity vector b.
+        # Refer: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L441-L493
         G1, G2, H1, H2, offset = _dierckx.init_augmented_matrices(A1, A2, b, len(t), k)
 
+        # Store these matrices as class attributes for use in evaluation
         self.G1_ = G1
         self.G2_ = G2
         self.H1_ = H1
@@ -629,32 +706,45 @@ class Fperiodic:
         self.offset_ = offset
 
     def __call__(self, p):
+        # Create copies of the augmented matrices to avoid overwriting originals
         G1 = self.G1_.copy()
         G2 = self.G2_.copy()
         H1 = self.H1_.copy()
         H2 = self.H2_.copy()
         Z = self.Z_.copy()
 
-        # pinv multiplied with H1 and H2
+        # Scale H1 and H2 by the inverse of p (1/p), applying the pinv multiplier
+        # This scaling is required before QR reduction step to control smoothing.
         pinv = 1/p
-        H1 = H1*pinv
-        H2 = H2*pinv
+        H1 = H1 * pinv
+        H2 = H2 * pinv
 
+        # Initialize vector c for coefficients with shape compatible with matrices.
+        # The first part of c is set from Z, which is related to least squares fit.
         c = np.empty((len(self.t) - self.k - 1, 1), dtype=Z.dtype)
         c[:len(self.t) - 2*self.k - 1, 0] = Z[:len(self.t) - 2*self.k - 1]
 
-        # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/fitpack/fpperi.f#L498-L534
+        # Perform QR factorization reduction on the augmented matrices
+        # This corresponds to the C++ function qr_reduce_augmented_matrices.
+        # It applies Givens rotations to eliminate entries and
+        # reduces the problem dimension by accounting for constraints.
+        # Refer: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L498-L534
         _dierckx.qr_reduce_augmented_matrices(
             G1, G2, H1, H2, c, self.offset_, len(self.t), self.k)
 
-        # Ref: https://github.com/scipy/scipy/blob/main/scipy/interpolate/fitpack/fpbacp.f
-        c, _, fp = _dierckx.fpbacp(G1, G2, np.reshape(c, c.shape[0]),
-                            self.k, self.k + 1, self.x[:-1], self.y[:-1, None],
-                            self.t, self.w[:-1])
+        # Solve for the B-spline coefficients by backward substitution
+        # using the reduced matrices. This corresponds to the fpbacp routine in fitpack.
+        c, _, fp = _dierckx.fpbacp(
+            G1, G2, np.reshape(c, c.shape[0]),
+            self.k, self.k + 1, self.x[:-1], self.y[:-1, None],
+            self.t, self.w[:-1])
 
+        # Construct a BSpline object using knot vector t, coefficients c, and degree k
         spl = BSpline(self.t, c, self.k)
-        self.spl = spl   # store it
+        self.spl = spl  # store it in the object
 
+        # Return the difference between the final residual fp and smoothing parameter s
+        # This quantity is used to assess fit quality in root-finding procedures.
         return fp - self.s
 
 
