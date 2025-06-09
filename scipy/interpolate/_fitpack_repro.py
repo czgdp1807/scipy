@@ -304,7 +304,15 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
         t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
     else:
         # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L131
-        # For periodic splines initial set of knots is all zeros except (k + 2)-th knot
+        # Initialize knot vector `t` of size (2k + 3) with zeros.
+        # The central knot `t[k + 1]` is seeded with the midpoint value from `x`.
+        # Note that, in the `if periodic:` block (in the main loop below),
+        # the boundary knots `t[k]` and `t[n - k - 1]` are set to the endpoints `xb` and `xe`.
+        # Then, the surrounding knots on both ends are updated to ensure periodicity.
+        # Specifically:
+        # - Left-side knots are mirrored from the right end minus the period (`per`).
+        # - Right-side knots are mirrored from the left end plus the period.
+        # These updates ensure that the knot vector wraps around correctly for periodic B-spline fitting.
         t = np.zeros(2*k + 3, dtype=float)
         t[k + 1] = x[(m + 1)//2 - 1]
         nplus = 1
