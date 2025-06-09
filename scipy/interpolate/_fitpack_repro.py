@@ -307,12 +307,14 @@ def _generate_knots_impl(x, y, w, xb, xe, k, s, nest, periodic):
         # Initialize knot vector `t` of size (2k + 3) with zeros.
         # The central knot `t[k + 1]` is seeded with the midpoint value from `x`.
         # Note that, in the `if periodic:` block (in the main loop below),
-        # the boundary knots `t[k]` and `t[n - k - 1]` are set to the endpoints `xb` and `xe`.
-        # Then, the surrounding knots on both ends are updated to ensure periodicity.
+        # the boundary knots `t[k]` and `t[n - k - 1]` are set to the endpoints `xb` and
+        # `xe`. Then, the surrounding knots on both ends are updated to ensure
+        # periodicity.
         # Specifically:
         # - Left-side knots are mirrored from the right end minus the period (`per`).
         # - Right-side knots are mirrored from the left end plus the period.
-        # These updates ensure that the knot vector wraps around correctly for periodic B-spline fitting.
+        # These updates ensure that the knot vector wraps around correctly for periodic
+        # B-spline fitting.
         t = np.zeros(2*k + 3, dtype=float)
         t[k + 1] = x[(m + 1)//2 - 1]
         nplus = 1
@@ -592,12 +594,14 @@ class Fperiodic:
     """
     Fit a smooth periodic B-spline curve to given data points.
 
-    This class fits a periodic B-spline curve S(t) of degree k through data points (x, y)
-    with knots t. The spline is smooth and repeats itself at the start and end, meaning
-    the function and its derivatives up to order k-1 are equal at the boundaries.
+    This class fits a periodic B-spline curve S(t) of degree k through data points
+    (x, y) with knots t. The spline is smooth and repeats itself at the start and
+    end, meaning the function and its derivatives up to order k-1 are equal
+    at the boundaries.
 
-    We want to find spline coefficients c that minimize the difference between the spline
-    and the data, while also keeping the spline smooth. This is done by solving:
+    We want to find spline coefficients c that minimize the difference between
+    the spline and the data, while also keeping the spline smooth. This is done
+    by solving:
 
         minimize || W^{1/2} (Y - B c) ||^2 + s * c^T @ R @ c
         subject to periodic constraints on c.
@@ -611,8 +615,9 @@ class Fperiodic:
       - c spline coefficients to be solved for
       - periodic constraints ensure the spline repeats smoothly.
 
-    The solution is obtained by forming augmented matrices and performing a QR factorization
-    that incorporates these constraints, following the approach in FITPACK's `fpperi.f`.
+    The solution is obtained by forming augmented matrices and performing
+    a QR factorization that incorporates these constraints, following the
+    approach in FITPACK's `fpperi.f`.
 
     Parameters:
     -----------
@@ -634,13 +639,13 @@ class Fperiodic:
     -----------
     G1, G2 : arrays
         Augmented matrices combining the original QR factors and constraints related to
-        the spline basis and data. G1 is roughly the "upper-triangular" part; G2 contains
-        additional constraint information for periodicity.
+        the spline basis and data. G1 is roughly the "upper-triangular" part;
+        G2 contains additional constraint information for periodicity.
 
     H1, H2 : arrays
-        Matrices associated with the discontinuity jump constraints of the k-th derivative
-        of B-splines at the knots. These encode the periodicity conditions and are scaled
-        by the smoothing parameter.
+        Matrices associated with the discontinuity jump constraints of the k-th
+        derivative of B-splines at the knots. These encode the periodicity
+        conditions and are scaled by the smoothing parameter.
 
     offset : array
         Offset indices used for efficient indexing during QR reduction.
