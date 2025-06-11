@@ -3735,6 +3735,28 @@ class TestMakeSplrepPeriodic(TestMakeSplrepBase):
         with assert_raises(ValueError):
             make_splrep(x, y, s=1e-8, bc_type=self.bc_type)
 
+    def test_make_splrep_periodic_m_eq_2_k_eq_1(self):
+        # Two data points (m = 2)
+        x = np.array([0.0, 1.0])
+        y = np.array([5.0, 5.0])  # constant function
+        w = np.array([1.0, 1.0])
+
+        # Degree 1 periodic spline
+        spl = make_splrep(x, y, w=w, k=1, bc_type="periodic", s=1e-50)
+        tck = splrep(x, y, w=w, k=1, per=1, s=1e-50)
+
+        xp_assert_close(spl.t, tck[0])
+        xp_assert_close(np.r_[spl.c, [0]*(spl.k+1)],
+                        tck[1])
+
+    @pytest.mark.parametrize("k", [2, 3, 4, 5])
+    def test_make_splrep_periodic_m_eq_2_k_gt_2_raises(self, k):
+        x = np.array([0.0, 1.0])
+        y = np.array([5.0, 5.0])
+        w = np.array([1.0, 1.0])
+
+        with assert_raises(ValueError):
+            make_splrep(x, y, w=w, k=k, s=1e-50, bc_type="periodic")
 
 class TestMakeSplprep:
     def _get_xyk(self, m=10, k=3):
