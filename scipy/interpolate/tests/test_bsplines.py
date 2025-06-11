@@ -3527,6 +3527,22 @@ class TestMakeSplrepBase:
         with assert_raises(ValueError):
             make_splrep(x, y, s=1e-8, bc_type="nonsense")
 
+    @pytest.mark.parametrize("bc_type", ["periodic", None])
+    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5])
+    def test_make_splrep_with_unequal_weights(self, bc_type, k):
+        # Sample data
+        x = np.linspace(0, 2*np.pi, 10)
+        y = np.sin(x)
+
+        w = np.linspace(1, 5, len(x))
+
+        tck = splrep(x, y, w=w, k=k, s=1e-8, per=(bc_type == 'periodic'))
+        spl = make_splrep(x, y, w=w, s=1e-8, k=k, bc_type=bc_type)
+
+        xp_assert_close(spl.t, tck[0])
+        xp_assert_close(np.r_[spl.c, [0]*(spl.k+1)],
+                        tck[1], atol=1e-8)
+
 class TestMakeSplrep(TestMakeSplrepBase):
 
     @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
