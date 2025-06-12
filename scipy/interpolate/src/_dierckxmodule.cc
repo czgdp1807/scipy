@@ -185,7 +185,7 @@ py_fpbacp(PyObject* self, PyObject *args)
 
     if (!(check_array(py_A1, 2, NPY_DOUBLE) &&
           check_array(py_A2, 2, NPY_DOUBLE) &&
-          check_array(py_Z, 1, NPY_DOUBLE))) {
+          check_array(py_Z, 2, NPY_DOUBLE))) {
         return NULL;
     }
 
@@ -206,7 +206,7 @@ py_fpbacp(PyObject* self, PyObject *args)
     int64_t nc = len_t - k - 1;
 
     // allocate the output buffer
-    npy_intp dims[2] = {nc, 1};
+    npy_intp dims[2] = {nc, PyArray_DIM(a_y, 1)};
     PyArrayObject *a_c = (PyArrayObject *)PyArray_SimpleNew(2, dims, NPY_DOUBLE);
     npy_intp dims1[1] = {m};
     PyArrayObject *a_residuals = (PyArrayObject *)PyArray_SimpleNew(1, dims1, NPY_DOUBLE);
@@ -347,8 +347,8 @@ py_qr_reduce_periodic(PyObject* self, PyObject *args, PyObject *kwargs)
     PyArrayObject *a_A1 = (PyArrayObject*)PyArray_EMPTY(2, dims1, NPY_DOUBLE, 0);
     npy_intp dims2[2] = {len_t - 2*k - 1, k};
     PyArrayObject *a_A2 = (PyArrayObject*)PyArray_EMPTY(2, dims2, NPY_DOUBLE, 0);
-    npy_intp dims3[1] = {len_t - k - 1};
-    PyArrayObject *a_Z = (PyArrayObject*)PyArray_EMPTY(1, dims3, NPY_DOUBLE, 0);
+    npy_intp dims3[2] = {len_t - k - 1, PyArray_DIM(a_y, 1)} ;
+    PyArrayObject *a_Z = (PyArrayObject*)PyArray_EMPTY(2, dims3, NPY_DOUBLE, 0);
 
     if ((a_A1 == NULL) || (a_A2 == NULL) || (a_Z == NULL)) {
         PyErr_NoMemory();
@@ -444,7 +444,7 @@ py_qr_reduce_augmented_matrices(PyObject* self, PyObject *args, PyObject *kwargs
             static_cast<double *>(PyArray_DATA(a_h2)),
             static_cast<double *>(PyArray_DATA(a_c)),
             static_cast<double *>(PyArray_DATA(a_offset)),
-            k, len_t
+            k, len_t, PyArray_DIM(a_c, 1)
         );
     }
     catch (const std::exception& e) {

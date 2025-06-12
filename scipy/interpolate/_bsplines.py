@@ -1868,7 +1868,6 @@ def _lsq_solve_qr_for_root_rati(x, y, t, k, w):
     y_w = y * w[:, None]
     # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L221-L238
     R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
-    assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
     # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L239-L314
     A1, A2, Z, p = _dierckx.qr_reduce_periodic(
         R, H1, H2, offset, nc, y_w, k,
@@ -1897,7 +1896,6 @@ def _lsq_solve_qr(x, y, t, k, w, periodic=False):
     else:
         # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L221-L238
         R, H1, H2, offset, nc = _dierckx.data_matrix(x, t, k, w, False, True)
-        assert(y.shape[1] == 1) # TODO: Update QR Reduce to account for y.shape[1] != 1
         # Ref: https://github.com/scipy/scipy/blob/maintenance/1.16.x/scipy/interpolate/fitpack/fpperi.f#L239-L314
         A1, A2, Z = _dierckx.qr_reduce_periodic(
             R, H1, H2, offset, nc, y_w, k,

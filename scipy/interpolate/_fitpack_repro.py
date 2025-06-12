@@ -731,8 +731,8 @@ class Fperiodic:
 
         # Initialize vector c for coefficients with shape compatible with matrices.
         # The first part of c is set from Z, which is related to least squares fit.
-        c = np.empty((len(self.t) - self.k - 1, 1), dtype=Z.dtype)
-        c[:len(self.t) - 2*self.k - 1, 0] = Z[:len(self.t) - 2*self.k - 1]
+        c = np.empty((len(self.t) - self.k - 1, Z.shape[1]), dtype=Z.dtype)
+        c[:len(self.t) - 2*self.k - 1, :] = Z[:len(self.t) - 2*self.k - 1, :]
 
         # Perform QR factorization reduction on the augmented matrices
         # This corresponds to the C++ function qr_reduce_augmented_matrices.
@@ -745,8 +745,8 @@ class Fperiodic:
         # Solve for the B-spline coefficients by backward substitution
         # using the reduced matrices. This corresponds to the fpbacp routine in fitpack.
         c, _, fp = _dierckx.fpbacp(
-            G1, G2, np.reshape(c, c.shape[0]),
-            self.k, self.k + 1, self.x[:-1], self.y[:-1, None],
+            G1, G2, c,
+            self.k, self.k + 1, self.x[:-1], self.y[:-1, :],
             self.t, self.w[:-1])
 
         # Construct a BSpline object using knot vector t, coefficients c, and degree k
@@ -956,8 +956,6 @@ def _make_splrep_impl(x, y, w, xb, xe, k, s, t, nest, periodic):
         _, fp0 = _get_residuals(x, y, np.array([xb]*(k+1) + [xe]*(k+1)), k, w)
         fp0 = fp0 - s
     else:
-        # Hanldes only y.shape[1] == 1
-        assert(y.shape[1] == 1)
         # f(p=0) is fp for constant function
         # in case of periodic splines
         per = xe - xb

@@ -437,12 +437,16 @@ void qr_reduce_periodic(
     auto H2 = RealArray2D(h2ptr, m, nz - 1);
     auto A1 = RealArray2D(a1ptr, len_t - k - 1, k + 1);      // Main upper-triangular matrix
     auto A2 = RealArray2D(a2ptr, len_t - 2*k - 1, k);        // For enforcing periodicity
-    auto z  = RealArray1D(zptr, len_t - k - 1);              // Transformed RHS
+    auto z  = RealArray2D(zptr, len_t - k - 1, ydim1);              // Transformed RHS
     auto y  = RealArray2D(yptr, m + 1, ydim1);               // Input/output Y vector
+
+    std::vector<double> yi(ydim1, 0.0);
 
     // Reset A1 and z to zero
     for( int64_t i = 1; i <= len_t - k - 1; i++ ) {
-        z(i - 1) = 0.0;
+        for( int64_t ydimi = 0; ydimi < ydim1; ydimi++ ) {
+            z(i - 1, ydimi) = 0.0;
+        }
         for( int64_t j = 1; j <= k + 1; j++ ) {
             A1(i - 1, j - 1) = 0.0;
         }
@@ -455,7 +459,9 @@ void qr_reduce_periodic(
 
     // Main loop over all data points
     for( int64_t it = 1; it <= m; it++ ) {
-        double yi = y(it - 1, 0);                     // Current y-value
+        for( int64_t ydimi = 0; ydimi < ydim1; ydimi++ ) {
+            yi[ydimi] = y(it - 1, ydimi);
+        }
         int64_t ind = offset[it - 1] + k;
         int64_t l = ind + 1;                          // l = leftmost non-zero + degree + 1
         int64_t l5 = l - k - 1;
@@ -501,7 +507,10 @@ void qr_reduce_periodic(
                         DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
                         A1(j - 1, 0) = r;
 
-                        std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+                        for( int64_t ydimi = 0; ydimi < ydim1; ydimi++ ) {
+                            std::tie(z(j - 1, ydimi), yi[ydimi]) =
+                                fprota(c, s, z(j - 1, ydimi), yi[ydimi]);
+                        }
                         for( int64_t h2i = 1; h2i <= k; h2i++ ) {
                             std::tie(A2(j - 1, h2i - 1), H2(it - 1, h2i - 1)) = fprota(
                                 c, s, A2(j - 1, h2i - 1), H2(it - 1, h2i - 1));
@@ -535,7 +544,10 @@ void qr_reduce_periodic(
                 double c, s, r;
                 DLARTG(&A2(ij - 1, j - 1), &piv, &c, &s, &r);
                 A2(ij - 1, j - 1) = r;
-                std::tie(z(ij - 1), yi) = fprota(c, s, z(ij - 1), yi);
+                for( int64_t ydimi = 0; ydimi < ydim1; ydimi++ ) {
+                    std::tie(z(ij - 1, ydimi), yi[ydimi]) =
+                        fprota(c, s, z(ij - 1, ydimi), yi[ydimi]);
+                }
 
                 if( j == k ) {
                     break;
@@ -560,7 +572,9 @@ void qr_reduce_periodic(
                 double c, s, r;
                 DLARTG(&A1(j - 1, 0), &piv, &c, &s, &r);
                 A1(j - 1, 0) = r;
-                std::tie(z(j - 1), yi) = fprota(c, s, z(j - 1), yi);
+                for( int64_t ydimi = 0; ydimi < ydim1; ydimi++ ) {
+                    std::tie(z(j - 1, ydimi), yi[ydimi]) = fprota(c, s, z(j - 1, ydimi), yi[ydimi]);
+                }
 
                 if( i == k + 1 ) {
                     break;
@@ -666,18 +680,22 @@ void qr_reduce_augmented_matrices(
     double* g1ptr, double* g2ptr,
     double* h1ptr, double* h2ptr,
     double* cptr, double* offsetptr,
-    int k, int64_t len_t
+    int k, int64_t len_t, int64_t ydim2
 ) {
     auto g1 = RealArray2D(g1ptr, len_t - 2*k - 1, k + 2);  // Main block matrix part 1
     auto g2 = RealArray2D(g2ptr, len_t - 2*k - 1, k + 1);  // Main block matrix part 2
     auto h1 = RealArray2D(h1ptr, len_t - 2*k - 2, k + 2);  // Constraint matrix part 1 (to be zeroed out)
     auto h2 = RealArray2D(h2ptr, len_t - 2*k - 2, k + 1);  // Constraint matrix part 2 (to be zeroed out)
-    auto c = RealArray2D(cptr, len_t - k - 1, 1);          // Right-hand side vector (updated during rotations)
+    auto c = RealArray2D(cptr, len_t - k - 1, ydim2);      // Right-hand side vector (updated during rotations)
     auto offset = RealArray1D(offsetptr, len_t - 2*k - 2); // Offset array, starting row for rotations
+
+    std::vector<double> yi(ydim2, 0.0);
 
     // Iterate over rows in the augmented matrix system (h1, h2 rows)
     for( int64_t it = 1; it <= len_t - 2*k - 2; it++ ) {
-        double yi = 0.0; // Auxiliary variable to hold rotated value of c
+        for( int64_t ydimi = 0; ydimi < ydim2; ydimi++ ) {
+            yi[ydimi] = 0.0; // Auxiliary variable to hold rotated value of c
+        }
 
         // Perform Givens rotations to zero out entries in h1 and update g1, g2, h2, c accordingly
         for( int64_t j = offset(it - 1); j <= len_t - 3*k - 2; j++ ) {
@@ -694,7 +712,11 @@ void qr_reduce_augmented_matrices(
             g1(j - 1, 0) = r;
 
             // Apply the same rotation to c(j-1, 0) and yi (c vector updated to maintain system consistency)
-            std::tie(c(j - 1, 0), yi) = fprota(cos, sin, c(j - 1, 0), yi);
+            for( int64_t ydimi = 0; ydimi < ydim2; ydimi++ ) {
+                std::tie(c(j - 1, ydimi), yi[ydimi]) =
+                    fprota(cos, sin, c(j - 1, ydimi), yi[ydimi]); // Auxiliary variable to hold rotated value of c
+            }
+
 
             // Rotate pairs of elements in g2 and h2 with the same rotation to maintain orthogonality
             for( int64_t h2i = 0; h2i < k + 1; h2i++ ) {
@@ -741,7 +763,10 @@ void qr_reduce_augmented_matrices(
             g2(ij - 1, j - 1) = r;
 
             // Rotate c(ij-1, 0) and yi with the same rotation to keep system consistent
-            std::tie(c(ij - 1, 0), yi) = fprota(cos, sin, c(ij - 1, 0), yi);
+            for( int64_t ydimi = 0; ydimi < ydim2; ydimi++ ) {
+                std::tie(c(ij - 1, ydimi), yi[ydimi]) =
+                    fprota(cos, sin, c(ij - 1, ydimi), yi[ydimi]);
+            }
 
             // If this is the last column in h2 for this row, break early
             if( j == k + 1) {
@@ -880,7 +905,7 @@ fpback( /* inputs*/
 void _fpbacp(
         ConstRealArray2D& A1,
         ConstRealArray2D& A2,
-        ConstRealArray1D& Z,
+        ConstRealArray2D& Z,
         int k, int kp, int64_t len_t,
         RealArray2D& c) {
 
@@ -888,39 +913,56 @@ void _fpbacp(
     int64_t n = nc - k;
     int64_t n2 = n - kp;
     int64_t l = n;
+    std::vector<double> store(Z.ncols, 0.0);
     for( int64_t i = 1; i <= kp; i++ ) {
-        double store = Z(l - 1);
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            store[ydimi] = Z(l - 1, ydimi);
+        }
         int64_t j = kp + 2 - i;
         if( i != 1 ) {
             int64_t l0 = l;
             for( int64_t l1 = j; l1 <= kp; l1++ ) {
                 l0 = l0 + 1;
-                store = store - c(l0 - 1, 0) * A2(l - 1, l1 - 1);
+                for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+                    store[ydimi] = store[ydimi] - c(l0 - 1, ydimi) * A2(l - 1, l1 - 1);
+                }
             }
         }
-        c(l - 1, 0) = store/A2(l - 1, j - 2);
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            c(l - 1, ydimi) = store[ydimi]/A2(l - 1, j - 2);
+        }
         l = l - 1;
         if( l == 0 ) {
             return ;
         }
     }
     for( int64_t i = 1; i <= n2; i++ ) {
-        double store = Z(i - 1);
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            store[ydimi] = Z(i - 1, ydimi);
+        }
         l = n2;
         for( int64_t j = 1; j <= kp; j++ ) {
             l = l + 1;
-            store = store - c(l - 1, 0) * A2(i - 1, j - 1);
+            for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+                store[ydimi] = store[ydimi] - c(l - 1, ydimi) * A2(i - 1, j - 1);
+            }
         }
-        c(i - 1, 0) = store;
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            c(i - 1, ydimi) = store[ydimi];
+        }
     }
     int64_t i = n2;
-    c(i - 1, 0) = c(i - 1, 0)/A1(i - 1, 0);
+    for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+        c(i - 1, ydimi) = c(i - 1, ydimi)/A1(i - 1, 0);
+    }
     if( i == 1 ) {
         return ;
     }
     for( int64_t j = 2; j <= n2; j++ ) {
         i = i - 1;
-        double store = c(i - 1, 0);
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            store[ydimi] = c(i - 1, ydimi);
+        }
         int64_t i1 = kp;
         if( j <= kp ) {
             i1 = j - 1;
@@ -928,9 +970,13 @@ void _fpbacp(
         l = i;
         for( int64_t l0 = 1; l0 <= i1; l0++ ) {
             l = l + 1;
-            store = store - c(l - 1, 0) * A1(i - 1, l0);
+            for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+                store[ydimi] = store[ydimi] - c(l - 1, ydimi) * A1(i - 1, l0);
+            }
         }
-        c(i - 1, 0) = store/A1(i - 1, 0);
+        for( int64_t ydimi = 0; ydimi < Z.ncols; ydimi++ ) {
+            c(i - 1, ydimi) = store[ydimi]/A1(i - 1, 0);
+        }
     }
 }
 
@@ -955,14 +1001,16 @@ fpbacp( /* inputs*/
     int64_t nc = len_t - k - 1;
     auto A1 = ConstRealArray2D(A1ptr, a1_rows, kp + 1);
     auto A2 = ConstRealArray2D(A2ptr, a2_rows, kp);
-    auto Z = ConstRealArray1D(Zptr, nc);
-    auto c = RealArray2D(cptr, nc, 1);
+    auto Z = ConstRealArray2D(Zptr, nc, ydim2);
+    auto c = RealArray2D(cptr, nc, ydim2);
 
     _fpbacp(A1, A2, Z, k, kp, len_t, c);
 
     int64_t offset = len_t - 2*k - 1;
     for( int64_t i = 0; i < k; i++ ) {
-        c(i + offset, 0) = c(i, 0);
+        for( int64_t ydimi = 0; ydimi < ydim2; ydimi++ ) {
+            c(i + offset, ydimi) = c(i, ydimi);
+        }
     }
 
     _compute_residuals(
