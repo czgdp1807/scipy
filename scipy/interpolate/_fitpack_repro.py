@@ -1139,7 +1139,8 @@ def make_splrep(x, y, *, w=None, xb=None, xe=None,
     return spl
 
 
-def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=None):
+def make_splprep(x, *, w=None, u=None, ub=None, ue=None,
+                 k=3, s=0, t=None, nest=None, bc_type=None):
     r"""
     Create a smoothing parametric B-spline curve with bounded error, minimizing derivative jumps.
 
@@ -1261,6 +1262,10 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
     .. [2] P. Dierckx, "Curve and surface fitting with splines", Monographs on
         Numerical Analysis, Oxford University Press, 1993.
     """  # noqa:E501
+    bc_type = _validate_bc_type(bc_type)
+
+    periodic = (bc_type == 'periodic')
+
     x = np.stack(x, axis=1)
 
     # construct the default parametrization of the curve
@@ -1274,9 +1279,11 @@ def make_splprep(x, *, w=None, u=None, ub=None, ue=None, k=3, s=0, t=None, nest=
             raise ValueError("s==0 is for interpolation only")
         return make_interp_spline(u, x.T, k=k, axis=1), u
 
-    u, x, w, k, s, ub, ue = _validate_inputs(u, x, w, k, s, ub, ue, parametric=True)
+    u, x, w, k, s, ub, ue = _validate_inputs(u, x, w, k, s, ub, ue,
+                                             parametric=True, periodic=periodic)
 
-    spl = _make_splrep_impl(u, x, w, ub, ue, k, s, t, nest, False)
+    spl = _make_splrep_impl(u, x, w, ub, ue, k, s, t,
+                            nest, periodic=periodic)
 
     # posprocess: `axis=1` so that spl(u).shape == np.shape(x)
     # when `x` is a list of 1D arrays (cf original splPrep)
