@@ -3865,6 +3865,103 @@ class TestMakeSplprep:
         assert spl(u).shape == (1, 8)
         xp_assert_close(spl(u), [x], atol=1e-15)
 
+class TestMakeSplprepPeriodic:
+
+    def _get_xyk(self, n=10, k=3):
+        x = np.linspace(0, 2*np.pi, n)
+        y = [np.sin(x), np.cos(x)]
+        return x, y, k
+
+    @pytest.mark.parametrize('s', [0, 1e-4, 1e-5, 1e-6])
+    def test_simple_vs_splprep(self, s):
+        # Check/document the interface vs splPrep
+        # The four values of `s` are to probe all code paths and shortcuts
+        n = 10
+        x = np.linspace(0, 2*np.pi, n)
+        y = [np.sin(x), np.cos(x)]
+
+        # the number of knots depends on `s` (this is by construction)
+        num_knots = {0: 14, 1e-4: 16, 1e-5: 16, 1e-6: 16}
+
+        # construct the splines
+        (t, c, k), u_ = splprep(y, s=s, per=1)
+        spl, u = make_splprep(y, s=s, bc_type="periodic")
+
+        # parameters
+        xp_assert_close(u, u_, atol=1e-15)
+
+        # knots
+        assert len(spl.t) == num_knots[s]
+
+        # values: note axis=1
+        xp_assert_close(spl(u),
+                        BSpline(t, c, k, axis=1)(u), atol=1e-15)
+
+    @pytest.mark.parametrize('s', [0, 1e-4, 1e-5, 1e-6])
+    def test_array_not_list(self, s):
+        # the argument of splPrep is either a list of arrays or a 2D array (sigh)
+        _, y, _ = self._get_xyk()
+        assert isinstance(y, list)
+        assert np.shape(y)[0] == 2
+
+        # assert the behavior of FITPACK's splrep
+        tck, u = splprep(y, s=s, per=1)
+        tck_a, u_a = splprep(np.asarray(y), s=s, per=1)
+        xp_assert_close(u, u_a, atol=s)
+        xp_assert_close(tck[0], tck_a[0], atol=1e-15)
+        assert len(tck[1]) == len(tck_a[1])
+        for c1, c2 in zip(tck[1], tck_a[1]):
+            xp_assert_close(c1, c2, atol=1e-15)
+        assert tck[2] == tck_a[2]
+        assert np.shape(splev(u, tck)) == np.shape(y)
+
+        spl, u = make_splprep(y, s=s, bc_type="periodic")
+        xp_assert_close(u, u_a, atol=1e-15)
+        assert spl.k == tck_a[2]
+        assert spl(u).shape == np.shape(y)
+
+        spl, u = make_splprep(np.asarray(y), s=s, bc_type="periodic")
+        xp_assert_close(u, u_a, atol=1e-15)
+        assert spl.k == tck_a[2]
+        assert spl(u).shape == np.shape(y)
+
+        with assert_raises(ValueError):
+            make_splprep(np.asarray(y).T, s=s, bc_type="periodic")
+
+    def test_default_s_is_zero(self):
+        x, y, k = self._get_xyk(n=10)
+
+        spl, u = make_splprep(y, bc_type="periodic")
+        xp_assert_close(spl(u), y, atol=1e-15)
+
+    def test_s_zero_vs_near_zero(self):
+        # s=0 and s \approx 0 are consistent
+        x, y, k = self._get_xyk(n=10)
+
+        spl_i, u_i = make_splprep(y, s=0, bc_type="periodic")
+        spl_n, u_n = make_splprep(y, s=1e-15, bc_type="periodic")
+
+        xp_assert_close(u_i, u_n, atol=1e-15)
+        xp_assert_close(spl_i(u_i), y, atol=1e-15)
+        xp_assert_close(spl_n(u_n), y, atol=1e-7)
+        assert spl_i.axis == spl_n.axis
+
+    def test_1D(self):
+        x = np.linspace(0, 2*np.pi, 8)
+        x = np.sin(x)
+        with assert_raises(ValueError):
+            splprep(x, per=1)
+
+        with assert_raises(ValueError):
+            make_splprep(x, s=0, bc_type="periodic")
+
+        with assert_raises(ValueError):
+            make_splprep(x, s=0.1, bc_type="periodic")
+
+        spl, u = make_splprep([x], s=1e-15, bc_type="periodic")
+
+        assert spl(u).shape == (1, 8)
+        xp_assert_close(spl(u), [x], atol=1e-15)
 
 class BatchSpline:
     # BSpline-line class with reference batch behavior
