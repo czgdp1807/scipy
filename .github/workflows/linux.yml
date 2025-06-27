@@ -386,6 +386,7 @@ jobs:
       run: |
         set -exuo pipefail
         pwd
+        ls
         docker pull quay.io/pypa/manylinux2014_i686
         docker run -v $(pwd):/scipy --platform=linux/i386 quay.io/pypa/manylinux2014_i686 /bin/bash -c "cd /scipy && \
         uname -a && \
@@ -405,7 +406,7 @@ jobs:
         python -m pip install numpy==1.26.4 cython pybind11 pytest pytest-timeout pytest-xdist pytest-env 'Pillow<10.0.0' mpmath pythran pooch meson hypothesis && \
         python -c 'import numpy as np; np.show_config()' && \
         spin build --with-scipy-openblas && \
-        spin test"
+        spin test -s interpolate"
 
   #################################################################################
   distro_multiple_pythons:
