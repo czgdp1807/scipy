@@ -213,7 +213,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
-          
+
       - name: Configuring Test Environment
         run: |
           sudo apt-get update
@@ -372,7 +372,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: ubuntu-latest
     # I tried running directly in a container:, using the image: and options:
     # entries. Unfortunately at this time options: does not seem to listen to
@@ -385,6 +385,8 @@ jobs:
     - name: build + test
       run: |
         set -exuo pipefail
+        pwd
+        ls
         docker pull quay.io/pypa/manylinux2014_i686
         docker run -v $(pwd):/scipy --platform=linux/i386 quay.io/pypa/manylinux2014_i686 /bin/bash -c "cd /scipy && \
         uname -a && \
