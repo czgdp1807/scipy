@@ -401,7 +401,8 @@ def test_dblint():
     rect_custom = regrid_python.regrid_python(x, y, 4 * xx * yy)
     tck = list(rect.tck)
     tck.extend(rect.degrees)
-    tck_custom = [*rect_custom.t, rect_custom.c.ravel(), *rect_custom.k]
+    tck_custom = list(rect_custom.tck)
+    tck_custom.extend(rect.degrees)
 
     assert abs(dblint(0, 1, 0, 1, tck) - 1) < 1e-10
     assert abs(dblint(0, 1, 0, 1, tck_custom) - 1) < 2e-2

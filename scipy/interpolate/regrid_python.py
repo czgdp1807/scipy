@@ -1,8 +1,17 @@
 import numpy as np
-from scipy.interpolate import NdBSpline
+from scipy.interpolate import RectBivariateSpline, NdBSpline
 from scipy.sparse import kron, csr_matrix
 from scipy.sparse.linalg import lsqr
 
+class RectBivariateSplinePython(RectBivariateSpline):
+
+    def __init__(self, fp, tck, degrees):
+        nx, ny = len(tck[0]), len(tck[1])
+        kx, ky = degrees
+        c = tck[2].reshape(nx - kx - 1, ny - ky - 1).T.flatten()
+        self.fp = fp
+        self.tck = (tck[0], tck[1], c)
+        self.degrees = degrees
 
 def initial_knots(data, degree, is_interpolation):
     m = len(data)
@@ -148,10 +157,8 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
             fp0 = fp
 
         if is_interp or abs(fp - s) < acc:
-            return NdBSpline(
-                (tx, ty),
-                c.reshape(nx - kx - 1, ny - ky - 1),
-                k=(kx, ky))
+            return RectBivariateSplinePython(
+                fp, (tx, ty, c), (kx, ky))
 
         if nx == max_tx and ny == max_ty:
             fp = 0
@@ -225,11 +232,8 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
         fp = compute_fp(A, c, rhs)
         fpms = fp - s
         if abs(fpms) < acc:
-            return NdBSpline(
-                (tx, ty),
-                c.reshape(nx - kx - 1, ny - ky - 1),
-                k=(kx, ky)
-            )
+            return RectBivariateSplinePython(
+                fp, (tx, ty, c), (kx, ky))
 
         if fpms > 0:
             p1, f1 = p, fpms
@@ -238,8 +242,5 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
 
         p = rational_root_update(p1, f1, p, fpms, p3, f3)
 
-    return NdBSpline(
-        (tx, ty),
-        c.reshape(nx - kx - 1, ny - ky - 1),
-        k=(kx, ky)
-    )
+    return RectBivariateSplinePython(
+        fp, (tx, ty, c), (kx, ky))

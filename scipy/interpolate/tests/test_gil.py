@@ -5,6 +5,7 @@ import time
 import numpy as np
 import pytest
 import scipy.interpolate
+import scipy.interpolate.regrid_python
 
 
 class TestGIL:
@@ -47,6 +48,9 @@ class TestGIL:
         def interpolate(x, y, z):
             scipy.interpolate.RectBivariateSpline(x, y, z)
 
+        def interpolate_custom(x, y, z):
+            scipy.interpolate.regrid_python.regrid_python(x, y, z)
+
         args = calibrate_delay(requested_time=3)
         worker_thread = self.make_worker_thread(interpolate, args)
         worker_thread.start()
@@ -62,3 +66,17 @@ class TestGIL:
             'interpolation complete',
         ]
 
+        args = calibrate_delay(requested_time=3)
+        worker_thread = self.make_worker_thread(interpolate_custom, args)
+        worker_thread.start()
+        for i in range(3):
+            time.sleep(0.5)
+            self.log('working')
+        worker_thread.join()
+        assert self.messages == [
+            'interpolation started',
+            'working',
+            'working',
+            'working',
+            'interpolation complete',
+        ]
