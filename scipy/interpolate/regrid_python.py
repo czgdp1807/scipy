@@ -135,7 +135,6 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     lastdi = 0
     nplusx = 0
     nplusy = 0
-    ier = 0
 
     mpm = mx + my
     for it in range(mpm):
@@ -159,7 +158,6 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
             break
 
         if nx == nxe and ny == nye:
-            ier = 1
             break
 
         if lastdi == 1:
@@ -189,7 +187,9 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
             nplusx = nplx
             for _ in range(nplusx):
                 z_resid = (A @ c - rhs).reshape((mx, my))
-                fpintx, nrdatax = compute_fpint_and_nrdata(z_resid.mean(axis=1), x, tx, kx)
+                fpintx, nrdatax = compute_fpint_and_nrdata(
+                    z_resid.mean(axis=1), x, tx, kx
+                )
                 fpintx = np.pad(fpintx, (0, max(0, nestx - len(fpintx))))
                 nrdatax = np.pad(nrdatax, (0, max(0, nestx - len(nrdatax))))
                 tx, fpintx, nrdatax, nx, nrintx = fpknot_like_insert(
@@ -202,7 +202,9 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
             nplusy = nply
             for _ in range(nplusy):
                 z_resid = (A @ c - rhs).reshape((mx, my))
-                fpinty, nrdatay = compute_fpint_and_nrdata(z_resid.mean(axis=0), y, ty, ky)
+                fpinty, nrdatay = compute_fpint_and_nrdata(
+                    z_resid.mean(axis=0), y, ty, ky
+                )
                 fpinty = np.pad(fpinty, (0, max(0, nesty - len(fpinty))))
                 nrdatay = np.pad(nrdatay, (0, max(0, nesty - len(nrdatay))))
                 ty, fpinty, nrdatay, ny, nrinty = fpknot_like_insert(
