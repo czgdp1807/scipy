@@ -10,7 +10,7 @@ import pytest
 from scipy._lib._testutils import check_free_memory
 
 from scipy.interpolate import RectBivariateSpline
-from scipy.interpolate import make_splrep
+from scipy.interpolate import make_splrep, regrid_python
 
 from scipy.interpolate._fitpack_py import (splrep, splev, bisplrep, bisplev,
      sproot, splprep, splint, spalde, splder, splantider, insert, dblint)
@@ -398,13 +398,22 @@ def test_dblint():
     y = np.linspace(0, 1)
     xx, yy = np.meshgrid(x, y)
     rect = RectBivariateSpline(x, y, 4 * xx * yy)
+    rect_custom = regrid_python.regrid_python(x, y, 4 * xx * yy)
     tck = list(rect.tck)
     tck.extend(rect.degrees)
+    tck_custom = [*rect_custom.t, rect_custom.c.ravel(), *rect_custom.k]
 
     assert abs(dblint(0, 1, 0, 1, tck) - 1) < 1e-10
+    assert abs(dblint(0, 1, 0, 1, tck_custom) - 1) < 2e-2
+
     assert abs(dblint(0, 0.5, 0, 1, tck) - 0.25) < 1e-10
+    assert abs(dblint(0, 0.5, 0, 1, tck_custom) - 0.25) < 2e-3
+
     assert abs(dblint(0.5, 1, 0, 1, tck) - 0.75) < 1e-10
+    assert abs(dblint(0.5, 1, 0, 1, tck_custom) - 0.75) < 1e-2
+
     assert abs(dblint(-100, 100, -100, 100, tck) - 1) < 1e-10
+    assert abs(dblint(-100, 100, -100, 100, tck_custom) - 1) < 2e-2
 
 
 def test_splev_der_k():
