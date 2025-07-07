@@ -405,16 +405,16 @@ def test_dblint():
     tck_custom.extend(rect.degrees)
 
     assert abs(dblint(0, 1, 0, 1, tck) - 1) < 1e-10
-    assert abs(dblint(0, 1, 0, 1, tck_custom) - 1) < 2e-2
+    assert abs(dblint(0, 1, 0, 1, tck_custom) - 1) < 5e-8
 
     assert abs(dblint(0, 0.5, 0, 1, tck) - 0.25) < 1e-10
-    assert abs(dblint(0, 0.5, 0, 1, tck_custom) - 0.25) < 2e-3
+    assert abs(dblint(0, 0.5, 0, 1, tck_custom) - 0.25) < 1e-7
 
     assert abs(dblint(0.5, 1, 0, 1, tck) - 0.75) < 1e-10
-    assert abs(dblint(0.5, 1, 0, 1, tck_custom) - 0.75) < 1e-2
+    assert abs(dblint(0.5, 1, 0, 1, tck_custom) - 0.75) < 8e-8
 
     assert abs(dblint(-100, 100, -100, 100, tck) - 1) < 1e-10
-    assert abs(dblint(-100, 100, -100, 100, tck_custom) - 1) < 2e-2
+    assert abs(dblint(-100, 100, -100, 100, tck_custom) - 1) < 5e-8
 
 
 def test_splev_der_k():

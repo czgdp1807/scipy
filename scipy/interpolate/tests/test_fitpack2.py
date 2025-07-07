@@ -950,16 +950,16 @@ class TestRectBivariateSpline:
             [2,.25,0,-.25,-2],[4,-1,0,1,-4]])
         dxdy = array([[40,-25,0,25,-40],[-26,16.25,0,-16.25,26],
             [-8,5,0,-5,8],[22,-13.75,0,13.75,-22],[-8,5,0,-5,8]])/6.
+
         lut = RectBivariateSpline(x,y,z)
+        lut_custom = regrid_python.regrid_python(x,y,z)
+
         assert_array_almost_equal(lut(x,y,dx=1),dx)
         assert_array_almost_equal(lut(x,y,dy=1),dy)
         assert_array_almost_equal(lut(x,y,dx=1,dy=1),dxdy)
-
-        # TODO: Derivatives don't work yet
-        # lut_custom = regrid_python.regrid_python(x,y,z)
-        # assert_array_almost_equal(lut_custom(x,y,dx=1),dx)
-        # assert_array_almost_equal(lut_custom(x,y,dy=1),dy)
-        # assert_array_almost_equal(lut_custom(x,y,dx=1,dy=1),dxdy)
+        assert_array_almost_equal(lut_custom(x,y,dx=1),dx)
+        assert_array_almost_equal(lut_custom(x,y,dy=1),dy)
+        assert_array_almost_equal(lut_custom(x,y,dx=1,dy=1),dxdy)
 
     def test_derivatives(self):
         x = array([1,2,3,4,5])
@@ -973,11 +973,10 @@ class TestRectBivariateSpline:
         assert_array_almost_equal(lut(x,y,dy=1,grid=False),dy)
         assert_array_almost_equal(lut(x,y,dx=1,dy=1,grid=False),dxdy)
 
-        # TODO: Derivatives don't work yet
-        # lut_custom = regrid_python.regrid_python(x,y,z)
-        # assert_array_almost_equal(lut_custom(x,y,dx=1,grid=False),dx)
-        # assert_array_almost_equal(lut_custom(x,y,dy=1,grid=False),dy)
-        # assert_array_almost_equal(lut_custom(x,y,dx=1,dy=1,grid=False),dxdy)
+        lut_custom = regrid_python.regrid_python(x,y,z)
+        assert_array_almost_equal(lut_custom(x,y,dx=1,grid=False),dx)
+        assert_array_almost_equal(lut_custom(x,y,dy=1,grid=False),dy)
+        assert_array_almost_equal(lut_custom(x,y,dx=1,dy=1,grid=False),dxdy)
 
     def test_partial_derivative_method_grid(self):
         x = array([1, 2, 3, 4, 5])
@@ -1007,11 +1006,10 @@ class TestRectBivariateSpline:
         assert_array_almost_equal(lut.partial_derivative(0, 1)(x, y), dy)
         assert_array_almost_equal(lut.partial_derivative(1, 1)(x, y), dxdy)
 
-        # TODO: Derivatives don't work yet
-        # lut_custom = regrid_python.regrid_python(x, y, z)
-        # assert_array_almost_equal(lut_custom.partial_derivative(1, 0)(x, y), dx)
-        # assert_array_almost_equal(lut_custom.partial_derivative(0, 1)(x, y), dy)
-        # assert_array_almost_equal(lut_custom.partial_derivative(1, 1)(x, y), dxdy)
+        lut_custom = regrid_python.regrid_python(x, y, z)
+        assert_array_almost_equal(lut_custom.partial_derivative(1, 0)(x, y), dx)
+        assert_array_almost_equal(lut_custom.partial_derivative(0, 1)(x, y), dy)
+        assert_array_almost_equal(lut_custom.partial_derivative(1, 1)(x, y), dxdy)
 
     def test_partial_derivative_method(self):
         x = array([1, 2, 3, 4, 5])
@@ -1035,17 +1033,16 @@ class TestRectBivariateSpline:
                                                                grid=False),
                                   dxdy)
 
-        # TODO: Derivatives don't work yet
-        # lut_custom = regrid_python.regrid_python(x, y, z)
-        # assert_array_almost_equal(lut_custom.partial_derivative(1, 0)(x, y,
-        #                                                        grid=False),
-        #                           dx)
-        # assert_array_almost_equal(lut_custom.partial_derivative(0, 1)(x, y,
-        #                                                        grid=False),
-        #                           dy)
-        # assert_array_almost_equal(lut_custom.partial_derivative(1, 1)(x, y,
-        #                                                        grid=False),
-        #                           dxdy)
+        lut_custom = regrid_python.regrid_python(x, y, z)
+        assert_array_almost_equal(lut_custom.partial_derivative(1, 0)(x, y,
+                                                               grid=False),
+                                  dx)
+        assert_array_almost_equal(lut_custom.partial_derivative(0, 1)(x, y,
+                                                               grid=False),
+                                  dy)
+        assert_array_almost_equal(lut_custom.partial_derivative(1, 1)(x, y,
+                                                               grid=False),
+                                  dxdy)
 
     def test_partial_derivative_order_too_large(self):
         x = array([0, 1, 2, 3, 4], dtype=float)
@@ -1441,8 +1438,8 @@ class Test_DerivedBivariateSpline:
         xx = linspace(0, 1, 20)
         yy = xx + 1.0
         zz = array([np.roll(z, i) for i in range(z.size)])
-        # TODO: Doesn't work yet with regrid_python
         self.lut_rect = RectBivariateSpline(xx, yy, zz)
+        self.lut_rect_custom = regrid_python.regrid_python(xx, yy, zz)
         self.orders = list(itertools.product(range(3), range(3)))
 
     def test_creation_from_LSQ(self):
@@ -1460,16 +1457,20 @@ class Test_DerivedBivariateSpline:
             assert a == b
 
     def test_creation_from_Rect(self):
-        for nux, nuy in self.orders:
-            lut_der = self.lut_rect.partial_derivative(nux, nuy)
-            a = lut_der(0.5, 1.5, grid=False)
-            b = self.lut_rect(0.5, 1.5, dx=nux, dy=nuy, grid=False)
-            assert a == b
+        lut_objs = [self.lut_rect, self.lut_rect_custom]
+        for lut_obj in lut_objs:
+            for nux, nuy in self.orders:
+                lut_der = lut_obj.partial_derivative(nux, nuy)
+                a = lut_der(0.5, 1.5, grid=False)
+                b = lut_obj(0.5, 1.5, dx=nux, dy=nuy, grid=False)
+                assert a == b
 
     def test_invalid_attribute_fp(self):
-        der = self.lut_rect.partial_derivative(1, 1)
-        with assert_raises(AttributeError):
-            der.fp
+        lut_objs = [self.lut_rect, self.lut_rect_custom]
+        for lut_obj in lut_objs:
+            der = lut_obj.partial_derivative(1, 1)
+            with assert_raises(AttributeError):
+                der.fp
 
     def test_invalid_attribute_get_residual(self):
         der = self.lut_smooth.partial_derivative(1, 1)
