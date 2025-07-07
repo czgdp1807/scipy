@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.interpolate import RectBivariateSpline, NdBSpline, BSpline
+from scipy.interpolate import RectBivariateSpline, BSpline
 from scipy.sparse import kron, csr_matrix
 from scipy.sparse.linalg import lsqr
 from scipy.interpolate._fitpack_repro import disc
