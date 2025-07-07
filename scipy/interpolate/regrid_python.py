@@ -1,7 +1,8 @@
 import numpy as np
-from scipy.interpolate import RectBivariateSpline, NdBSpline
+from scipy.interpolate import RectBivariateSpline, NdBSpline, BSpline
 from scipy.sparse import kron, csr_matrix
 from scipy.sparse.linalg import lsqr
+from scipy.interpolate._fitpack_repro import disc
 
 class RectBivariateSplinePython(RectBivariateSpline):
 
@@ -15,18 +16,20 @@ class RectBivariateSplinePython(RectBivariateSpline):
 
 def initial_knots(data, degree, is_interpolation):
     m = len(data)
-    k1 = degree + 1
+    k = degree
+    k3 = k//2 + 2
+    mk1 = m - k - 1
     if is_interpolation:
-        interior = data[1:-1] if m > 2 else []
+        interior = data[k3 - 1:k3 + mk1 - 1] if m > 2 else []
         return np.concatenate([
-            np.full(k1, data[0]),
+            np.full(k + 1, data[0]),
             interior,
-            np.full(k1, data[-1])
+            np.full(k + 1, data[-1])
         ])
     else:
         return np.concatenate([
-            np.full(k1, data[0]),
-            np.full(k1, data[-1])
+            np.full(k + 1, data[0]),
+            np.full(k + 1, data[-1])
         ])
 
 def compute_fp(A, c, rhs):
@@ -112,6 +115,29 @@ def rational_root_update(p1, f1, p2, f2, p3, f3):
     num = (f2 - f1) * (p2 - p3) * p2 - (f2 - f3) * (p2 - p1) * p2
     return max(num / denom, 1e-6)
 
+def compute_b_spline_penalty(t, k):
+    return disc(t, k)
+
+def construct_augmented_system(x, y, z, tx, ty, kx, ky, p):
+    # Observation matrices
+    spx = BSpline.design_matrix(x, tx, kx).toarray()
+    spy = BSpline.design_matrix(y, ty, ky).toarray()
+
+    # Penalty matrices
+    bx = compute_b_spline_penalty(tx, kx)[0]
+    by = compute_b_spline_penalty(ty, ky)[0]
+
+    # Augment
+    if p > 0:
+        Ax = np.vstack([spx, (1 / p) * bx]) if bx.shape[0] > 0 else spx
+        Ay = np.vstack([spy, (1 / p) * by]) if by.shape[0] > 0 else spy
+    else:
+        Ax, Ay = spx, spy
+
+    A = kron(Ay, Ax)
+    rhs = z.T.flatten()
+    q = np.concatenate([rhs, np.zeros(A.shape[0] - len(rhs))])
+    return A, q
 
 def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     mx, my = len(x), len(y)
@@ -119,7 +145,7 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     rhs = z.T.flatten()
 
     is_interp = s == 0.0
-    acc = tol * max(s, 1e-12)
+    acc = tol * s
 
     tx = initial_knots(x, kx, is_interp)
     ty = initial_knots(y, ky, is_interp)
@@ -144,14 +170,13 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     lastdi = 0
     nplusx = 0
     nplusy = 0
+    p = -1
 
     mpm = mx + my
     for it in range(mpm):
-        Bx = NdBSpline.design_matrix(x[:, None], (tx,), kx)
-        By = NdBSpline.design_matrix(y[:, None], (ty,), ky)
-        A = kron(By, Bx)
-        c = lsqr(csr_matrix(A), rhs)[0]
-        fp = compute_fp(A, c, rhs)
+        A, q = construct_augmented_system(x, y, z, tx, ty, kx, ky, p)
+        c = lsqr(csr_matrix(A), q)[0]
+        fp = compute_fp(A, c, q)
 
         if it == 0:
             fp0 = fp
@@ -226,9 +251,8 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     p = 0.5 * (p1 + p3)
 
     for _ in range(maxit):
-        A = kron(NdBSpline.design_matrix(y[:, None], (ty,), ky),
-                 NdBSpline.design_matrix(x[:, None], (tx,), kx))
-        c = lsqr(csr_matrix(A / (1 + p)), rhs / (1 + p))[0]
+        A, q = construct_augmented_system(x, y, z, tx, ty, kx, ky, p)
+        c = lsqr(csr_matrix(A), q)[0]
         fp = compute_fp(A, c, rhs)
         fpms = fp - s
         if abs(fpms) < acc:
