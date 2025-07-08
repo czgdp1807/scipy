@@ -1070,58 +1070,81 @@ class TestRectBivariateSpline:
 
     def test_invalid_input(self):
 
+        x = array([6, 2, 3, 4, 5])
+        y = array([1, 2, 3, 4, 5])
+        z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
+                    [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
+
         with assert_raises(ValueError) as info:
-            x = array([6, 2, 3, 4, 5])
-            y = array([1, 2, 3, 4, 5])
-            z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
-                       [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
             RectBivariateSpline(x, y, z)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "x must be strictly increasing" in str(info.value)
 
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z)
+        assert "x must be strictly increasing" in str(info_custom.value)
+
+        x = array([1, 2, 3, 4, 5])
+        y = array([2, 2, 3, 4, 5])
+        z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
+                    [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
         with assert_raises(ValueError) as info:
-            x = array([1, 2, 3, 4, 5])
-            y = array([2, 2, 3, 4, 5])
-            z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
-                       [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
             RectBivariateSpline(x, y, z)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "y must be strictly increasing" in str(info.value)
 
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z)
+        assert "y must be strictly increasing" in str(info_custom.value)
+
+        x = array([1, 2, 3, 4, 5])
+        y = array([1, 2, 3, 4, 5])
+        z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
+                    [1, 2, 2, 2, 1]])
         with assert_raises(ValueError) as info:
-            x = array([1, 2, 3, 4, 5])
-            y = array([1, 2, 3, 4, 5])
-            z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
-                       [1, 2, 2, 2, 1]])
             RectBivariateSpline(x, y, z)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "x dimension of z must have same number of elements as x"\
                in str(info.value)
 
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z)
+        assert "x dimension of z must have same number of elements as x"\
+               in str(info_custom.value)
+
+        x = array([1, 2, 3, 4, 5])
+        y = array([1, 2, 3, 4, 5])
+        z = array([[1, 2, 1, 2], [1, 2, 1, 2], [1, 2, 3, 2],
+                    [1, 2, 2, 2], [1, 2, 1, 2]])
+
         with assert_raises(ValueError) as info:
-            x = array([1, 2, 3, 4, 5])
-            y = array([1, 2, 3, 4, 5])
-            z = array([[1, 2, 1, 2], [1, 2, 1, 2], [1, 2, 3, 2],
-                       [1, 2, 2, 2], [1, 2, 1, 2]])
             RectBivariateSpline(x, y, z)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "y dimension of z must have same number of elements as y"\
                in str(info.value)
 
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z)
+        assert "y dimension of z must have same number of elements as y"\
+               in str(info_custom.value)
+
+        x = array([1, 2, 3, 4, 5])
+        y = array([1, 2, 3, 4, 5])
+        z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
+                    [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
+        bbox = (-100, 100, -100)
+
         with assert_raises(ValueError) as info:
-            x = array([1, 2, 3, 4, 5])
-            y = array([1, 2, 3, 4, 5])
-            z = array([[1, 2, 1, 2, 1], [1, 2, 1, 2, 1], [1, 2, 3, 2, 1],
-                       [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
-            bbox = (-100, 100, -100)
             RectBivariateSpline(x, y, z, bbox=bbox)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "bbox shape should be (4,)" in str(info.value)
+
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z, bbox=bbox)
+        assert "bbox shape should be (4,)" in str(info_custom.value)
 
         with assert_raises(ValueError) as info:
             RectBivariateSpline(x, y, z, s=-1.0)
-        # TODO: Not yet supported in regrid_python.regrid_python
         assert "s should be s >= 0.0" in str(info.value)
+
+        with assert_raises(ValueError) as info_custom:
+            regrid_python.regrid_python(x, y, z, s=-1.0)
+        assert "s should be s >= 0.0" in str(info_custom.value)
 
     def test_array_like_input(self):
         x = array([1, 2, 3, 4, 5])
@@ -1130,11 +1153,16 @@ class TestRectBivariateSpline:
                    [1, 2, 2, 2, 1], [1, 2, 1, 2, 1]])
         bbox = array([1, 5, 1, 5])
 
-        # TODO: Not yet supported in regrid_python.regrid_python
         spl1 = RectBivariateSpline(x, y, z, bbox=bbox)
+        spl1_custom = regrid_python.regrid_python(x, y, z, bbox=bbox)
         spl2 = RectBivariateSpline(x.tolist(), y.tolist(), z.tolist(),
                                    bbox=bbox.tolist())
+        spl2_custom = regrid_python.regrid_python(x.tolist(), y.tolist(), z.tolist(),
+                                   bbox=bbox.tolist())
         assert_array_almost_equal(spl1(1.0, 1.0), spl2(1.0, 1.0))
+        assert_array_almost_equal(spl1(1.0, 1.0), spl1_custom(1.0, 1.0))
+        assert_array_almost_equal(spl2(1.0, 1.0), spl2_custom(1.0, 1.0))
+        assert_array_almost_equal(spl1_custom(1.0, 1.0), spl2_custom(1.0, 1.0))
 
     def test_not_increasing_input(self):
         # gh-8565

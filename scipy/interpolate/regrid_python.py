@@ -14,7 +14,7 @@ class RectBivariateSplinePython(RectBivariateSpline):
         self.tck = (tck[0], tck[1], c)
         self.degrees = degrees
 
-def initial_knots(data, degree, is_interpolation):
+def initial_knots(data, degree, is_interpolation, db, de):
     m = len(data)
     k = degree
     k3 = k//2 + 2
@@ -22,14 +22,14 @@ def initial_knots(data, degree, is_interpolation):
     if is_interpolation:
         interior = data[k3 - 1:k3 + mk1 - 1] if m > 2 else []
         return np.concatenate([
-            np.full(k + 1, data[0]),
+            np.full(k + 1, db),
             interior,
-            np.full(k + 1, data[-1])
+            np.full(k + 1, de)
         ])
     else:
         return np.concatenate([
-            np.full(k + 1, data[0]),
-            np.full(k + 1, data[-1])
+            np.full(k + 1, db),
+            np.full(k + 1, de)
         ])
 
 def compute_fp(A, c, rhs):
@@ -139,7 +139,21 @@ def construct_augmented_system(x, y, z, tx, ty, kx, ky, p):
     q = np.concatenate([rhs, np.zeros(A.shape[0] - len(rhs))])
     return A, q
 
-def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
+def regrid_python(x, y, z, bbox=[None] * 4, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
+    x, y, bbox = np.ravel(x), np.ravel(y), np.ravel(bbox)
+    z = np.asarray(z)
+    if not np.all(np.diff(x) > 0.0):
+        raise ValueError('x must be strictly increasing')
+    if not np.all(np.diff(y) > 0.0):
+        raise ValueError('y must be strictly increasing')
+    if not x.size == z.shape[0]:
+        raise ValueError('x dimension of z must have same number of '
+                            'elements as x')
+    if not y.size == z.shape[1]:
+        raise ValueError('y dimension of z must have same number of '
+                            'elements as y')
+    if s is not None and not s >= 0.0:
+        raise ValueError("s should be s >= 0.0")
     mx, my = len(x), len(y)
     z = z.reshape((mx, my))
     rhs = z.T.flatten()
@@ -147,8 +161,21 @@ def regrid_python(x, y, z, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     is_interp = s == 0.0
     acc = tol * s
 
-    tx = initial_knots(x, kx, is_interp)
-    ty = initial_knots(y, ky, is_interp)
+    if not bbox.shape == (4,):
+        raise ValueError('bbox shape should be (4,)')
+
+    xb, xe, yb, ye = bbox
+    if xb is None:
+        xb = x[0]
+    if xe is None:
+        xe = x[-1]
+    if yb is None:
+        yb = y[0]
+    if ye is None:
+        ye = y[-1]
+
+    tx = initial_knots(x, kx, is_interp, xb, xe)
+    ty = initial_knots(y, ky, is_interp, yb, ye)
     max_tx = mx + kx + 1
     max_ty = my + ky + 1
     nestx = max_tx + 10
