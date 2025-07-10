@@ -1217,6 +1217,15 @@ class TestRectBivariateSpline:
         assert(not np.isnan(z_spl).any())
         xp_assert_close(z_spl, z, atol=atol, rtol=rtol)
 
+    @pytest.mark.slow()
+    @pytest.mark.parametrize('shape', [(320, 320)])
+    @pytest.mark.parametrize('s_tols', [(0, 0.06, 0.009)])
+    def test_spline_large_2d_custom(self, shape, s_tols):
+        # Reference - https://github.com/scipy/scipy/issues/17787
+        nx, ny = shape
+        s, atol, rtol = s_tols
+        x, y, z = self._sample_large_2d_data(nx, ny)
+
         spl_custom = regrid_python.regrid_python(x, y, z, s=s)
         z_spl_custom = spl_custom(x, y)
         assert(not np.isnan(z_spl_custom).any())
