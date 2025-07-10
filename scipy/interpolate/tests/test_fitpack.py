@@ -10,7 +10,7 @@ import pytest
 from scipy._lib._testutils import check_free_memory
 
 from scipy.interpolate import RectBivariateSpline
-from scipy.interpolate import make_splrep
+from scipy.interpolate import make_splrep, regrid_python
 
 from scipy.interpolate._fitpack_py import (splrep, splev, bisplrep, bisplev,
      sproot, splprep, splint, spalde, splder, splantider, insert, dblint)
@@ -398,13 +398,23 @@ def test_dblint():
     y = np.linspace(0, 1)
     xx, yy = np.meshgrid(x, y)
     rect = RectBivariateSpline(x, y, 4 * xx * yy)
+    rect_custom = regrid_python.regrid_python(x, y, 4 * xx * yy)
     tck = list(rect.tck)
     tck.extend(rect.degrees)
+    tck_custom = list(rect_custom.tck)
+    tck_custom.extend(rect.degrees)
 
     assert abs(dblint(0, 1, 0, 1, tck) - 1) < 1e-10
+    assert abs(dblint(0, 1, 0, 1, tck_custom) - 1) < 5e-8
+
     assert abs(dblint(0, 0.5, 0, 1, tck) - 0.25) < 1e-10
+    assert abs(dblint(0, 0.5, 0, 1, tck_custom) - 0.25) < 1e-7
+
     assert abs(dblint(0.5, 1, 0, 1, tck) - 0.75) < 1e-10
+    assert abs(dblint(0.5, 1, 0, 1, tck_custom) - 0.75) < 8e-8
+
     assert abs(dblint(-100, 100, -100, 100, tck) - 1) < 1e-10
+    assert abs(dblint(-100, 100, -100, 100, tck_custom) - 1) < 5e-8
 
 
 def test_splev_der_k():
@@ -502,7 +512,7 @@ def test_spalde_scalar_input():
 
 def test_spalde_nc():
     # regression test for https://github.com/scipy/scipy/issues/19002
-    # here len(t) = 29 and len(c) = 25 (== len(t) - k - 1) 
+    # here len(t) = 29 and len(c) = 25 (== len(t) - k - 1)
     x = np.asarray([-10., -9., -8., -7., -6., -5., -4., -3., -2.5, -2., -1.5,
                     -1., -0.5, 0., 0.5, 1., 1.5, 2., 2.5, 3., 4., 5., 6.],
                     dtype="float")
