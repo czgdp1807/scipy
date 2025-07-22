@@ -142,6 +142,9 @@ def construct_augmented_system(x, y, z, tx, ty, kx, ky, p):
 def regrid_python(x, y, z, bbox=[None] * 4, kx=3, ky=3, s=0.0, tol=1e-3, maxit=25):
     x, y, bbox = np.ravel(x), np.ravel(y), np.ravel(bbox)
     z = np.asarray(z)
+    x, y, z = (x.astype(np.float64, copy=False),
+               y.astype(np.float64, copy=False),
+               z.astype(np.float64, copy=False))
     if not np.all(np.diff(x) > 0.0):
         raise ValueError('x must be strictly increasing')
     if not np.all(np.diff(y) > 0.0):
