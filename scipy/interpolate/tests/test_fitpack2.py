@@ -922,6 +922,41 @@ class TestRectBivariateSpline:
         lut_custom = regrid_python.regrid_python(x, y, z)
         assert_array_almost_equal(lut_custom(x, y), z)
 
+    def test_interpolated_offgrid_points(self):
+        # Setup
+        x = np.linspace(0, 4, 5)
+        y = np.linspace(0, 4, 5)
+        z = np.sin(x[:, None]) * np.cos(y[None, :])
+
+        xi = np.linspace(0, 4, 50)  # much finer grid
+        yi = np.linspace(0, 4, 50)
+
+        ref = RectBivariateSpline(x, y, z)
+        ref_vals = ref(xi, yi)
+
+        custom = regrid_python.regrid_python(x, y, z)
+        custom_vals = custom(xi, yi)
+
+        # Compare interpolated values
+        assert_array_almost_equal(custom_vals, ref_vals)
+
+    def test_midpoints(self):
+        # Midpoint interpolation
+        x = np.array([1, 2, 3, 4])
+        y = np.array([1, 2, 3, 4])
+        z = x[:, None] + y[None, :]  # simple known function
+
+        xi = (x[:-1] + x[1:]) / 2
+        yi = (y[:-1] + y[1:]) / 2
+
+        ref = RectBivariateSpline(x, y, z)
+        custom = regrid_python.regrid_python(x, y, z)
+
+        ref_vals = ref(xi, yi)
+        custom_vals = custom(xi, yi)
+
+        assert_array_almost_equal(custom_vals, ref_vals)
+
     def test_evaluate(self):
         x = array([1,2,3,4,5])
         y = array([1,2,3,4,5])
