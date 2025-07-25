@@ -957,6 +957,33 @@ class TestRectBivariateSpline:
 
         assert_array_almost_equal(custom_vals, ref_vals)
 
+    @pytest.mark.parametrize("s_val", [0.1, 1.0, 10.0, 100.0])
+    def test_custom_matches_reference(self, s_val):
+        x = np.linspace(0, 4, 20)
+        y = np.linspace(0, 4, 20)
+        X, Y = np.meshgrid(x, y, indexing="ij")
+        z = X + Y
+
+        x_mid = (x[:-1] + x[1:]) / 2
+        y_mid = (y[:-1] + y[1:]) / 2
+        xi_dense = np.linspace(0, 4, 50)
+        yi_dense = np.linspace(0, 4, 50)
+
+        query_sets = [
+            ("original grid", x, y),
+            ("midpoints", x_mid, y_mid),
+            ("dense grid", xi_dense, yi_dense),
+        ]
+
+        ref = RectBivariateSpline(x, y, z, s=s_val)
+        custom = regrid_python.regrid_python(x, y, z, s=s_val)
+
+        for _, xi, yi in query_sets:
+            ref_vals = ref(xi, yi)
+            custom_vals = custom(xi, yi)
+
+            xp_assert_close(custom_vals, ref_vals, rtol=2e-2, atol=2e-2)
+
     def test_evaluate(self):
         x = array([1,2,3,4,5])
         y = array([1,2,3,4,5])
