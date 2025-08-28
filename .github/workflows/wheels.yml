@@ -1,7 +1,7 @@
 # Workflow to build and test wheels.
 # To work on the wheel building infrastructure on a fork, comment out:
 #
-# if: github.repository == 'scipy/scipy'
+# if: github.repository == 'czgdp1807/scipy'
 #
 # in the get_commit_message job include [wheel build] in your commit
 # message to trigger the build. All files related to wheel building are located
@@ -37,7 +37,7 @@ jobs:
   get_commit_message:
     name: Get commit message
     runs-on: ubuntu-latest
-    if: github.repository == 'scipy/scipy'
+    if: github.repository == 'czgdp1807/scipy'
     outputs:
       message: ${{ steps.commit_message.outputs.message }}
     steps:
@@ -46,7 +46,7 @@ jobs:
         # Gets the correct commit message for pull request
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          
+
       - name: Get commit message
         id: commit_message
         run: |
@@ -132,7 +132,7 @@ jobs:
             echo "CXX=clang-cl" >> $env:GITHUB_ENV
             echo "FC=flang" >> $env:GITHUB_ENV
             echo "TARGET_ARCH=${{ matrix.buildplat[2] }}" >> $env:GITHUB_ENV
-   
+
       - name: Set up Flang and pkgconf for ARM64
         if: matrix.buildplat[1] == 'win' && matrix.buildplat[2] == 'ARM64'
         uses: ./.github/windows_arm64_steps
