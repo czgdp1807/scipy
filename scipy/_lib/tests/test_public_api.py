@@ -48,6 +48,7 @@ PRIVATE_BUT_PRESENT_MODULES = [
     'scipy.interpolate.interpnd',
     'scipy.interpolate.interpolate',
     'scipy.interpolate.ndgriddata',
+    'scipy.interpolate.regrid_python',
     'scipy.interpolate.polyint',
     'scipy.interpolate.rbf',
     'scipy.io.arff.arffread',
