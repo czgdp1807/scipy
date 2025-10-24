@@ -557,86 +557,6 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     fp = fp_residual(z, zhat)
     return C, fp
 
-def _span_indices_from_knots(x, t, k):
-    """
-    Map each ``x`` to its B-spline span index (clamped).
-
-    Parameters
-    ----------
-    x : array_like
-        Query points.
-    t : array_like
-        Knot vector.
-    k : int
-        Spline degree.
-
-    Returns
-    -------
-    ndarray of int
-        Span indices ``j`` such that ``t[j] <= x < t[j+1]``, clamped to
-        ``[k, len(t) - k - 2]``.
-    """
-    j = np.searchsorted(t, x, side="right") - 1
-    j = np.clip(j, k, len(t) - k - 2)
-    return j
-
-def _fpint_axis_from_residual_rows(x, t, k, row_energy):
-    """
-    Accumulate residual row energies into knot-span bins.
-
-    Parameters
-    ----------
-    x : array_like
-        Axis sample positions.
-    t : array_like
-        Knot vector along the same axis.
-    k : int
-        Spline degree.
-    row_energy : array_like, shape (len(x),)
-        Energy per row, e.g. ``sum(R**2, axis=1)``.
-
-    Returns
-    -------
-    ndarray
-        ``fpint`` array of length ``len(t) - 1`` with per-span energy totals.
-        Zero for degenerate spans where ``t[i+1] == t[i]``.
-    """
-    t = np.asarray(t, float)
-    valid_span = (t[1:] > t[:-1])
-    fpintx = np.zeros(len(t) - 1, dtype=float)
-
-    spans = _span_indices_from_knots(x, t, k)
-    np.add.at(fpintx, spans, row_energy)
-
-    fpintx[~valid_span] = 0.0
-    return fpintx
-
-def _fpint_xy(x, y, t_x, t_y, kx, ky, R):
-    """
-    Project residual energy along x and y knot spans.
-
-    Parameters
-    ----------
-    x, y : array_like
-        Sample positions along x and y.
-    t_x, t_y : array_like
-        Knot vectors along x and y.
-    kx, ky : int
-        Spline degrees.
-    R : ndarray, shape (len(x), len(y))
-        Residual grid ``Z - Zhat``.
-
-    Returns
-    -------
-    fpintx, fpinty : ndarray
-        Per-span energy arrays for x and y axes, respectively.
-    """
-    row_energy = np.einsum("ij,ij->i", R, R)
-    col_energy = np.einsum("ij,ij->j", R, R)
-    fpintx = _fpint_axis_from_residual_rows(x, t_x, kx, row_energy)
-    fpinty = _fpint_axis_from_residual_rows(y, t_y, ky, col_energy)
-    return fpintx, fpinty
-
 class F:
     """
     Callable wrapper for computing `fp(p)` for a fixed spline configuration.
@@ -793,298 +713,6 @@ def _p_search_hit_s(
         print(f"[psearch] root_rati -> p={p_star:.6e}, fp={fp_star:.6e}")
 
     return p_star, C_star, fp_star
-
-def _enforce_clamped(tx, k, xb, xe):
-    """
-    Enforce clamped ends on a knot vector.
-
-    Parameters
-    ----------
-    tx : array_like
-        Knot vector (will be copied).
-    k : int
-        Degree.
-    xb, xe : float
-        Domain endpoints.
-
-    Returns
-    -------
-    ndarray
-        Knot vector with first/last ``k+1`` entries set to ``xb``/``xe``.
-    """
-    t = np.asarray(tx, float).copy()
-    t[:k+1]    = xb
-    t[-(k+1):] = xe
-    return t
-
-def _decide_batch_counts(fp, fpold, s,
-                         fpintx, fpinty,
-                         mx_head, my_head,
-                         *, batch_cap=12):
-    """
-    Decide how many x- and y-knots to insert next (batch growth heuristic).
-
-    Parameters
-    ----------
-    fp : float
-        Current residual.
-    fpold : float or None
-        Previous residual (for estimating gain).
-    s : float
-        Target residual.
-    fpintx, fpinty : ndarray
-        Per-span residual energies along x and y.
-    mx_head, my_head : int
-        Remaining headroom (max additional knots) along x and y.
-    batch_cap : int, optional
-        Maximum total insertions per iteration, by default 12.
-
-    Returns
-    -------
-    nplx, nply : int
-        Planned insertions along x and y.
-
-    Notes
-    -----
-    Uses deficit/gain ratio and energy split to allocate between axes, with guards.
-    """
-    if not (np.isfinite(fp) and (fpold is None or
-                                 np.isfinite(fpold)) and np.isfinite(s)):
-        nplx = 1 if mx_head > 0 else 0
-        nply = 1 if my_head > 0 else 0
-        return nplx, nply
-
-    deficit = max(fp - s, 0.0)
-    if fpold is None:
-        wx = float(np.sum(fpintx))
-        wy = float(np.sum(fpinty))
-        if (mx_head <= 0) and (my_head <= 0):
-            return 0, 0
-        if wy > wx:
-            return (0, 1 if my_head > 0 else 0)
-        else:
-            return (1 if mx_head > 0 else 0, 0)
-
-    gain = max(fpold - fp, 0.0)
-
-    GAIN_FLOOR = 1e-12
-    if gain <= GAIN_FLOOR:
-        n_total = 1
-    else:
-        ratio = min(deficit / gain, 1e6)
-        n_total = int(np.clip(np.ceil(ratio / 2.0), 1, batch_cap))
-
-    wx = float(np.sum(fpintx))
-    wy = float(np.sum(fpinty))
-    if wx + wy <= 0:
-        nplx_raw = n_total // 2
-    else:
-        nplx_raw = int(np.round(n_total * (wx / (wx + wy))))
-    nply_raw = n_total - nplx_raw
-
-    nplx = int(min(max(nplx_raw, 0), mx_head))
-    nply = int(min(max(nply_raw, 0), my_head))
-    if (nplx + nply) == 0 and (mx_head > 0 or my_head > 0):
-        if mx_head >= my_head:
-            nplx = min(1, mx_head)
-        else:
-            nply = min(1, my_head)
-    return nplx, nply
-
-def _top_spans(fpint, n, forbid_zero_len_mask):
-    """
-    Select up to ``n`` top energy spans, honoring a validity mask.
-
-    Parameters
-    ----------
-    fpint : ndarray
-        Energy per span.
-    n : int
-        Maximum number to select.
-    forbid_zero_len_mask : ndarray of bool or None
-        Mask of valid spans (True = valid). If None, all are considered.
-
-    Returns
-    -------
-    list of int
-        Selected span indices in descending energy order (up to ``n``).
-    """
-    idx = np.argsort(fpint)[::-1]
-    out = []
-    for j in idx:
-        if len(out) >= n:
-            break
-        if forbid_zero_len_mask is not None and not forbid_zero_len_mask[j]:
-            continue
-        out.append(int(j))
-    return out
-
-def _pick_data_knot_in_span(x, t, jspan):
-    """
-    Pick a representative data abscissa within a knot span.
-
-    Parameters
-    ----------
-    x : ndarray
-        Sorted data abscissae.
-    t : ndarray
-        Knot vector.
-    jspan : int
-        Span index.
-
-    Returns
-    -------
-    float or None
-        Candidate knot location (e.g., a median-like sample) or ``None`` if
-        no data falls in the span.
-    """
-    lo, hi = t[jspan], t[jspan+1]
-    idx = np.where((x >= lo) & (x < hi))[0]
-    if idx.size == 0:
-        return None
-    return float(x[idx[idx.size//2]])
-
-def _batch_insert_axis(x, t, k, fpint, n_add, xb, xe, nest_limit):
-    """
-    Insert up to ``n_add`` knots along an axis guided by span energies.
-
-    Parameters
-    ----------
-    x : ndarray
-        Data abscissae.
-    t : ndarray
-        Current knot vector.
-    k : int
-        Degree.
-    fpint : ndarray
-        Per-span residual energies.
-    n_add : int
-        Requested number of insertions.
-    xb, xe : float
-        Domain endpoints.
-    nest_limit : int or None
-        Maximum allowed number of coefficients; if exceeded, stops.
-
-    Returns
-    -------
-    t_new : ndarray
-        Updated knot vector.
-    added : int
-        Actual number of insertions performed.
-
-    Notes
-    -----
-    Skips degenerate spans, duplicates, and respects nesting/headroom limits.
-    """
-    if n_add <= 0:
-        return t, 0
-    valid_span = (t[1:] > t[:-1])
-    spans = _top_spans(fpint, n_add*2, valid_span)
-    added = 0
-    for js in spans:
-        if added >= n_add:
-            break
-        cand = _pick_data_knot_in_span(x, t, js)
-        if cand is None:
-            continue
-        cand = float(np.clip(cand, xb, xe))
-        if not (t[k] + 1e-12 < cand < t[-k-1] - 1e-12):
-            continue
-        if np.any(np.isclose(t, cand, atol=1e-12)):
-            continue
-        t2 = np.sort(np.r_[t, cand])
-        n_old = len(t) - k - 1
-        n_new = len(t2) - k - 1
-        if n_new <= n_old:
-            continue
-        if nest_limit is not None and n_new > nest_limit:
-            break
-        t = t2
-        added += 1
-    return t, added
-
-def make_interpolatory_knots(x, k):
-    """
-    Build clamped interpolatory knot vector from strictly increasing samples.
-
-    Parameters
-    ----------
-    x : ndarray
-        Strictly increasing sample locations.
-    k : int
-        Degree.
-
-    Returns
-    -------
-    ndarray
-        Knot vector with ``k+1`` repeats at both ends and internal knots at
-        ``x[left : -right]`` (if available), where ``left = (k+1)//2``.
-    """
-    x = np.asarray(x, float)
-    if x.size < k + 1:
-        raise ValueError("need at least k+1 samples")
-
-    left  = (k + 1) // 2
-    right = (k + 1) - left
-
-    t_start = np.repeat(x[0], k + 1)
-    t_end   = np.repeat(x[-1], k + 1)
-
-    if x.size > (left + right):
-        ti = x[left : x.size - right]
-    else:
-        ti = np.array([], dtype=float)
-
-    t = np.r_[t_start, ti, t_end].astype(float)
-    return t
-
-def make_open_uniform_knots(x, k, n_internal, *,
-                            xb=None, xe=None):
-    """
-    Build an open uniform knot vector on [xb, xe] with optional interior knots.
-
-    Parameters
-    ----------
-    x : ndarray
-        Sample locations (used to compute quantiles if ``n_internal > 0``).
-    k : int
-        Degree.
-    n_internal : int
-        Number of interior knots; if > 0, placed at empirical quantiles of
-        samples within [xb, xe].
-    xb, xe : float, optional
-        Domain endpoints. Defaults to ``x[0]`` and ``x[-1]``.
-
-    Returns
-    -------
-    ndarray
-        Clamped knot vector with ``k+1`` repeats at both ends and
-        ``n_internal`` interior knots if requested.
-
-    Raises
-    ------
-    ValueError
-        If no samples fall inside the requested domain.
-    """
-    x = np.asarray(x)
-    if xb is None:
-        xb = float(x[0])
-    if xe is None:
-        xe = float(x[-1])
-    if not (xb < xe):
-        raise ValueError("xb must be < xe")
-
-    t_start = np.repeat(xb, k + 1)
-    t_end = np.repeat(xe, k + 1)
-
-    if n_internal and n_internal > 0:
-        x_in = x[(x >= xb) & (x <= xe)]
-        if x_in.size == 0:
-            raise ValueError("No x samples fall inside [xb, xe].")
-        ti = np.quantile(x_in, np.linspace(0, 1, n_internal + 2)[1:-1])
-        return np.r_[t_start, ti, t_end].astype(float)
-
-    return np.r_[t_start, t_end].astype(float)
 
 def _apply_bbox_grid(x, y, Z, bbox):
     """
@@ -1265,7 +893,6 @@ def _regrid_python_fitpack(
     x_fit, y_fit, Z_fit, _, _ = _apply_bbox_grid(x, y, Z, bbox)
     x_fit = x_fit.astype(float)
     y_fit = y_fit.astype(float)
-    mx, my = Z_fit.shape
 
     if x_fit.size < (kx + 1) or y_fit.size < (ky + 1):
         raise ValueError(
@@ -1303,11 +930,11 @@ def _regrid_python_fitpack(
          Dry, offset_dy, _, Q) = build_matrices(
              x_fit, y_fit, Z, tx, ty, kx, ky)
         C0, fp  = _solve_2d_fitpack(Ax, offset_x, nc_x,
-                           Drx, offset_dx,
-                           Ay, offset_y, nc_y, Q,
-                           Dry, offset_dy, -1,
-                           kx, tx, x_fit, ky, ty,
-                           y_fit, Z_fit)
+                                    Drx, offset_dx,
+                                    Ay, offset_y, nc_y, Q,
+                                    Dry, offset_dy, -1,
+                                    kx, tx, x_fit, ky, ty,
+                                    y_fit, Z_fit)
 
         if len(tx) == nminx and len(ty) == nminy:
             fp0 = fp
@@ -1327,24 +954,7 @@ def _regrid_python_fitpack(
         _Ay = BSpline.design_matrix(y_fit, ty, ky, extrapolate=False)
         Z0  = (_Ax @ C0) @ _Ay.T
         R = Z_fit - Z0
-        fpintx, fpinty = _fpint_xy(x_fit, y_fit, tx, ty, kx, ky, R)
 
-        # if fpold is None:
-        #     wx, wy = np.sum(fpintx), np.sum(fpinty)
-        #     nplx = 1 if (wx >= wy) else 0
-        #     nply = 1 if (wy > wx) else 0
-        #     if verbose:
-        #         print(f"First growth step: wx={wx:.3e} wy={wy:.3e} "
-        #               f"-> nplx={nplx} nply={nply}")
-        # else:
-        #     nplx, nply = _decide_batch_counts(fp, fpold, s, fpintx, fpinty,
-        #                                       mx_head or 0, my_head or 0,
-        #                                       batch_cap=12)
-        #     if verbose:
-        #         print(f"  Batch decision: fpold={fpold:.6e} -> fp={fp:.6e}, "
-        #               f"nplx={nplx}, nply={nply}")
-
-        # grew_total = 0
         added_x = None
         added_y = None
         if last_axis == "y":
@@ -1357,8 +967,6 @@ def _regrid_python_fitpack(
             added_x = len(tx) - len_tx_before
             if verbose:
                 print(f"    Inserted {added_x} knots in X")
-            # grew_total += added_x
-            # if added_x:
             last_axis = "x"
         else:
             len_ty_before = len(ty)
@@ -1370,86 +978,9 @@ def _regrid_python_fitpack(
             added_y = len(ty) - len_ty_before
             if verbose:
                 print(f"    Inserted {added_y} knots in Y")
-            # grew_total += added_y
-            # if added_y:
             last_axis = "y"
 
-
-        # if grew_total == 0:
-        #     if verbose:
-        #         print("[interp-exit] cannot add more knots "
-        #               "-> building interpolatory knots & returning p=0")
-        #     tx = make_interpolatory_knots(x_fit, kx)
-        #     ty = make_interpolatory_knots(y_fit, ky)
-
-        #     (Ax, offset_x, nc_x,
-        #      Ay, offset_y, nc_y,
-        #      Drx, offset_dx, nc_dx,
-        #      Dry, offset_dy, nc_dy, Q) = build_matrices(
-        #         x_fit, y_fit, Z, tx, ty, kx, ky)
-        #     C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
-        #                           Drx, offset_dx,
-        #                           Ay, offset_y, nc_y, Q,
-        #                           Dry, offset_dy, -1,
-        #                           kx, tx, x_fit, ky,
-        #                           ty, y_fit, Z_fit)
-        #     if fp < s:
-        #         (Ax, offset_x, nc_x,
-        #          Ay, offset_y, nc_y,
-        #          Drx, offset_dx, _,
-        #          Dry, offset_dy, _, Q) = build_matrices(
-        #             x_fit, y_fit, Z, tx, ty, kx, ky)
-        #         _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-        #                           Drx, offset_dx,
-        #                           Ay, offset_y, nc_y, Q,
-        #                           Dry, offset_dy,
-        #                           kx, tx, x_fit, ky, ty, y_fit,
-        #                           Z_fit, s, fp0, p_init=1, verbose=verbose)
-        #         return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
-        #     else:
-        #         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
-
-        # moves += grew_total
-        # if moves >= mpm:
-        #     if verbose:
-        #         print("Reached mpm limit, stopping growth")
-        #     break
-
         fpold = fp
-
-        # if len(tx) >= nmaxx or len(ty) >= nmaxy:
-        #     if verbose:
-        #         print(f"[interp-exit] reached nmaxx/nmaxy: nx={len(tx)} ny={len(ty)} "
-        #               "-> building interpolatory knots & returning p=0")
-        #     tx = make_interpolatory_knots(x_fit, kx)
-        #     ty = make_interpolatory_knots(y_fit, ky)
-
-        #     (Ax, offset_x, nc_x,
-        #      Ay, offset_y, nc_y,
-        #      Drx, offset_dx, _,
-        #      Dry, offset_dy, _, Q) = build_matrices(
-        #         x_fit, y_fit, Z, tx, ty, kx, ky)
-        #     C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
-        #                           Drx, offset_dx,
-        #                           Ay, offset_y, nc_y, Q,
-        #                           Dry, offset_dy, -1,
-        #                           kx, tx, x_fit, ky,
-        #                           ty, y_fit, Z_fit)
-        #     if fp < s:
-        #         (Ax, offset_x, nc_x,
-        #          Ay, offset_y, nc_y,
-        #          Drx, offset_dx, _,
-        #          Dry, offset_dy, _, Q) = build_matrices(
-        #             x_fit, y_fit, Z, tx, ty, kx, ky)
-        #         _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-        #                           Drx, offset_dx,
-        #                           Ay, offset_y, nc_y, Q,
-        #                           Dry, offset_dy,
-        #                           kx, tx, x_fit, ky, ty, y_fit,
-        #                           Z_fit, s, fp0, verbose=verbose)
-        #         return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
-        #     else:
-        #         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
     if verbose:
         print(f"Growth end with fp={fp:.6e} > s={s:.6e} "
