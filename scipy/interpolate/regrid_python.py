@@ -107,129 +107,9 @@ import numpy as np
 from scipy.interpolate import BSpline, NdBSpline
 from scipy.interpolate._fitpack_repro import (
     root_rati, disc, add_knot, _not_a_knot)
-import time
 from . import _dierckx
 
-from time import perf_counter
-from contextlib import contextmanager
-
-class BlockTimer:
-    """
-    Lightweight wall-clock timer for named code blocks.
-
-    Use as a context manager to accumulate time under a user-defined name
-    and later print a sorted timing report.
-
-    Examples
-    --------
-    >>> t = BlockTimer()
-    >>> with t("assemble"):
-    ...     ...  # do work
-    >>> with t("solve"):
-    ...     ...  # do work
-    >>> t.report()
-    """
-
-    def __init__(self):
-        """
-        Initialize the timer store.
-
-        Notes
-        -----
-        Internally maintains a dict ``times: Dict[str, float]`` that maps
-        a block name to cumulative seconds.
-        """
-        self.times = {}
-
-    @contextmanager
-    def __call__(self, name):
-        """
-        Time a code block and accumulate its duration under ``name``.
-
-        Parameters
-        ----------
-        name : str
-            Bucket name under which the elapsed time is accumulated.
-
-        Yields
-        ------
-        None
-            Context manager for timing.
-
-        Notes
-        -----
-        Nested usage is supported; times are accumulated independently.
-        """
-        t0 = perf_counter()
-        try:
-            yield
-        finally:
-            self.times[name] = self.times.get(name, 0.0) + (perf_counter() - t0)
-
-    def report(self, round_to=5):
-        """
-        Print and return a sorted timing table.
-
-        Parameters
-        ----------
-        round_to : int, optional
-            Number of decimal places for pretty-printing, by default 5.
-
-        Returns
-        -------
-        list of tuple
-            List of ``(name, seconds, percent)`` entries, sorted by seconds
-            in descending order. The percentages sum to ~100%.
-
-        Notes
-        -----
-        If no time was recorded, a small epsilon is used to avoid division by zero.
-        """
-        total = sum(self.times.values()) or 1e-12
-        rows = []
-        for k, v in sorted(self.times.items(), key=lambda kv: kv[1], reverse=True):
-            pct = 100.0 * v / total
-            rows.append((k, v, pct))
-        # pretty print
-        print("\n=== Block timing ===")
-        for k, v, pct in rows:
-            print(f"{k:>7}: {v:.{round_to}f}s  ({pct:.{round_to}f}%)")
-        print(f"  total: {total:.{round_to}f}s")
-        return rows
-
-def _memory_percent_increase_xi_vs_xyZ(nx, ny, s_coord, s_Z):
-    """
-    Percent memory increase of using stacked 2D coordinates vs separate (x, y, Z).
-
-    Computes the extra memory percentage when calling a spline with an ``(N, 2)``
-    stacked coordinate array ``xi`` (where ``N = nx * ny``) instead of passing
-    separate ``x``, ``y`` and a grid ``Z``.
-
-    Parameters
-    ----------
-    nx, ny : int
-        Grid sizes along x and y.
-    s_coord : int
-        Itemsize (in bytes) for coordinate dtype (e.g., 8 for float64).
-    s_Z : int
-        Itemsize (in bytes) for Z dtype (e.g., 8 for float64).
-
-    Returns
-    -------
-    float
-        Percentage increase in memory footprint (0..100+).
-
-    Notes
-    -----
-    Base memory ~ ``(nx + ny) * s_coord + (nx * ny) * s_Z``.
-    Extra memory for ``xi`` ~ ``(2 * nx * ny - (nx + ny)) * s_coord``.
-    """
-    base = (nx + ny) * s_coord + (nx * ny) * s_Z
-    extra = (2 * nx * ny - (nx + ny)) * s_coord
-    return (extra / base) * 100.0 if base > 0 else 0.0
-
-def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True,
-                                  return_profiling_data=False, Z_for_memory=None):
+def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True):
     """
     Evaluate a 2D ``NdBSpline`` like a classical bivariate API.
 
@@ -246,11 +126,6 @@ def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True,
     grid : bool, optional
         If True, evaluate on the cartesian product of ``x`` and ``y``;
         otherwise treat ``(x, y)`` as paired coordinates, by default True.
-    return_profiling_data : bool, optional
-        If True, return a dict with coarse timings of mesh and evaluation,
-        by default False.
-    Z_for_memory : array_like, optional
-        If provided, used only to estimate memory overhead of stacked coords.
 
     Returns
     -------
@@ -258,8 +133,6 @@ def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True,
         Evaluated values with shape:
         - ``(len(x), len(y), ...)`` if ``grid=True``.
         - ``x.shape + ...`` if ``grid=False``.
-        If ``return_profiling_data=True``, also returns a dict of timings and
-        optional memory overhead in percent.
 
     Raises
     ------
@@ -279,20 +152,13 @@ def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True,
         raise ValueError("order of derivative must be positive or zero")
 
     trailing = ndbs.c.shape[2:]
-    prof = {}
 
     if grid:
-        t0 = time.perf_counter()
         x = np.asarray(x)
         y = np.asarray(y)
 
         if x.size == 0 or y.size == 0:
             vals = np.zeros((x.size, y.size) + trailing, dtype=ndbs.c.dtype)
-            if return_profiling_data:
-                prof.update(dict(block1_s=0.0, block2_s=0.0, total_s=0.0))
-                if Z_for_memory is not None:
-                    prof["mem_pct_extra"] = 0.0
-                return vals, prof
             return vals
 
         if (x.size >= 2) and (not np.all(np.diff(x) >= 0.0)):
@@ -302,21 +168,9 @@ def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True,
 
         X, Y = np.meshgrid(x, y, indexing="ij")
         xi = np.stack((X, Y), axis=-1)  # (len(x), len(y), 2)
-        t1 = time.perf_counter()
 
         vals = ndbs(xi, nu=(dx, dy), extrapolate=ndbs.extrapolate)
-        t2 = time.perf_counter()
 
-        if return_profiling_data:
-            prof["block1_s"] = t1 - t0
-            prof["block2_s"] = t2 - t1
-            prof["total_s"]  = t2 - t0
-            if Z_for_memory is not None:
-                s_coord = x.dtype.itemsize
-                s_Z = Z_for_memory.dtype.itemsize
-                prof["mem_pct_extra"] = _memory_percent_increase_xi_vs_xyZ(
-                    len(x), len(y), s_coord, s_Z)
-            return vals, prof
         return vals
     else:
         x = np.asarray(x)
