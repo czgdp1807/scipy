@@ -945,10 +945,13 @@ def _regrid_python_fitpack(
             print(f"    headroom: mx_head={mx_head} my_head={my_head} "
                   f"(nestx={nestx}, nesty={nesty})")
 
-        if s == 0.0 or fp <= s:
+        if s == 0.0:
             if verbose:
                 print(f"  Target reached at it={it} (fp = {fp} <= s = {s})")
             return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+
+        if fp < s:
+            break
 
         _Ax = BSpline.design_matrix(x_fit, tx, kx, extrapolate=False)
         _Ay = BSpline.design_matrix(y_fit, ty, ky, extrapolate=False)
