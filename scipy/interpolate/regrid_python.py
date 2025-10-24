@@ -105,7 +105,8 @@ The final `(tx, ty, C)` are packaged as an `NdBSpline` for convenient evaluation
 """
 import numpy as np
 from scipy.interpolate import BSpline, NdBSpline
-from scipy.interpolate._fitpack_repro import root_rati, disc
+from scipy.interpolate._fitpack_repro import (
+    root_rati, disc, add_knot, _not_a_knot)
 import time
 from . import _dierckx
 
@@ -458,10 +459,7 @@ def fp_residual(Z, Zhat):
     """
     R = Z - Zhat
 
-    if not np.isfinite(R).all():
-        return float("inf")
-
-    if np.isnan(R).any() or will_square_overflow(R).any():
+    if will_square_overflow(R).any() or (not np.isfinite(R).all()):
         return float("inf")
 
     return np.sum(np.square(R))
@@ -1143,6 +1141,84 @@ def build_matrices(x, y, z, tx, ty, kx, ky):
             Drx, offset_dx, nc_dx,
             Dry, offset_dy, nc_dy, Q)
 
+TOL = 0.001
+
+def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
+                    nest=None, t=None, fp=None, fpold=None,
+                    residuals=None, nplus=None):
+
+    if s == 0:
+        if nest is not None:
+            raise ValueError("s == 0 is interpolation only")
+        # For special-case k=1 (e.g., Lyche and Morken, Eq.(2.16)),
+        # _not_a_knot produces desired knot vector
+        t = _not_a_knot(x, k)
+        return np.asarray(t), None, None, None
+
+    acc = s * TOL
+    m = x.size    # the number of data points
+
+    if t is None:
+        if nest is None:
+            # the max number of knots. This is set in _fitpack_impl.py line 274
+            # and fitpack.pyf line 198
+            # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/_fitpack_impl.py#L260-L263
+            nest = max(m + k + 1, 2*k + 3)
+        else:
+            if nest < 2*(k + 1):
+                raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
+
+        nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
+        nmax = m + k + 1  # the number of knots for the spline interpolation
+
+        fp = 0.0
+        fpold = 0.0
+
+        # start from no internal knots
+        t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
+
+        return t, nest, nmin, nmax
+
+    n = t.size
+
+    fpms = fp - s
+
+    # c  test whether the approximation sinf(x) is an acceptable solution.
+    # c  if f(p=inf) < s accept the choice of knots.
+    if (abs(fpms) < acc) or (fpms < 0):
+        return
+
+    # ### c  increase the number of knots. ###
+
+    # c  determine the number of knots nplus we are going to add.
+    if n == nmin:
+        # the first iteration
+        nplus = 1
+    else:
+        delta = fpold - fp
+        npl1 = int(nplus * fpms / delta) if delta > acc else nplus*2
+        nplus = min(nplus*2, max(npl1, nplus//2, 1))
+
+    # actually add knots
+    for j in range(nplus):
+        t = add_knot(x, t, k, residuals)
+
+        # check if we have enough knots already
+
+        n = t.shape[0]
+        # c  if n = nmax, sinf(x) is an interpolating spline.
+        # c  if n=nmax we locate the knots as for interpolation.
+        if n >= nmax:
+            t = _not_a_knot(x, k)
+            return np.asarray(t), nplus
+
+        # c  if n=nest we cannot increase the number of knots because of
+        # c  the storage capacity limitation.
+        if n >= nest:
+            return np.asarray(t), nplus
+
+    return np.asarray(t), nplus
+
 def _regrid_python_fitpack(
     x, y, Z, *, kx=3, ky=3, s=0.0,
     maxit=50, nestx=None, nesty=None,
@@ -1198,22 +1274,13 @@ def _regrid_python_fitpack(
             f"Got ({x_fit.size}, {y_fit.size})."
         )
 
-    if nestx is None:
-        nestx = len(x_fit) + kx + 1
-    if nesty is None:
-        nesty = len(y_fit) + ky + 1
-
     xb = float(x_fit[0] if bbox[0] is None else bbox[0])
     xe = float(x_fit[-1] if bbox[1] is None else bbox[1])
     yb = float(y_fit[0] if bbox[2] is None else bbox[2])
     ye = float(y_fit[-1] if bbox[3] is None else bbox[3])
 
-    if s == 0.0:
-        tx = make_interpolatory_knots(x_fit, kx)
-        ty = make_interpolatory_knots(y_fit, ky)
-    else:
-        tx = make_open_uniform_knots(x_fit, kx, 0, xb=xb, xe=xe)
-        ty = make_open_uniform_knots(y_fit, ky, 0, xb=yb, xe=ye)
+    tx, nestx, nminx, nmaxx = _generate_knots(x_fit, xb, xe, kx, s, nest=nestx)
+    ty, nesty, nminy, nmaxy = _generate_knots(y_fit, yb, ye, ky, s, nest=nesty)
 
     moves = 0
     fpold = None
@@ -1223,21 +1290,17 @@ def _regrid_python_fitpack(
     ny = len(ty)
     mx_head = max(0, nestx - nx) if nestx is not None else None
     my_head = max(0, nesty - ny) if nesty is not None else None
-    nminx = 2*(kx + 1)
-    nminy = 2*(ky + 1)
-    nmaxx = len(x_fit)
-    nmaxy = len(y_fit)
     fp0 = None
+    nplusx = None
+    nplusy = None
 
-    for it in range(len(x) + len(y) + 1):
-        tx = _enforce_clamped(tx, kx, xb, xe)
-        ty = _enforce_clamped(ty, ky, yb, ye)
+    for it in range(mpm):
         nx, ny = len(tx), len(ty)
 
         (Ax, offset_x, nc_x,
          Ay, offset_y, nc_y,
-         Drx, offset_dx, nc_dx,
-         Dry, offset_dy, nc_dy, Q) = build_matrices(
+         Drx, offset_dx, _,
+         Dry, offset_dy, _, Q) = build_matrices(
              x_fit, y_fit, Z, tx, ty, kx, ky)
         C0, fp  = _solve_2d_fitpack(Ax, offset_x, nc_x,
                            Drx, offset_dx,
@@ -1266,119 +1329,127 @@ def _regrid_python_fitpack(
         R = Z_fit - Z0
         fpintx, fpinty = _fpint_xy(x_fit, y_fit, tx, ty, kx, ky, R)
 
-        if fpold is None:
-            wx, wy = np.sum(fpintx), np.sum(fpinty)
-            nplx = 1 if (wx >= wy) else 0
-            nply = 1 if (wy > wx) else 0
-            if verbose:
-                print(f"First growth step: wx={wx:.3e} wy={wy:.3e} "
-                      f"-> nplx={nplx} nply={nply}")
-        else:
-            nplx, nply = _decide_batch_counts(fp, fpold, s, fpintx, fpinty,
-                                              mx_head or 0, my_head or 0,
-                                              batch_cap=12)
-            if verbose:
-                print(f"  Batch decision: fpold={fpold:.6e} -> fp={fp:.6e}, "
-                      f"nplx={nplx}, nply={nply}")
+        # if fpold is None:
+        #     wx, wy = np.sum(fpintx), np.sum(fpinty)
+        #     nplx = 1 if (wx >= wy) else 0
+        #     nply = 1 if (wy > wx) else 0
+        #     if verbose:
+        #         print(f"First growth step: wx={wx:.3e} wy={wy:.3e} "
+        #               f"-> nplx={nplx} nply={nply}")
+        # else:
+        #     nplx, nply = _decide_batch_counts(fp, fpold, s, fpintx, fpinty,
+        #                                       mx_head or 0, my_head or 0,
+        #                                       batch_cap=12)
+        #     if verbose:
+        #         print(f"  Batch decision: fpold={fpold:.6e} -> fp={fp:.6e}, "
+        #               f"nplx={nplx}, nply={nply}")
 
-        grew_total = 0
-        if last_axis == "y" and nplx:
-            tx, added_x = _batch_insert_axis(x_fit, tx, kx, fpintx, nplx, xb, xe, nestx)
-            if verbose and added_x:
+        # grew_total = 0
+        added_x = None
+        added_y = None
+        if last_axis == "y":
+            len_tx_before = len(tx)
+            tx, nplusx = _generate_knots(
+                x_fit, xb, xe, kx, s, nmin=nminx, nmax=nmaxx,
+                nest=nestx, t=tx, fp=fp, fpold=fpold,
+                residuals=np.ascontiguousarray(np.sum(R**2, 1)),
+                nplus=nplusx)
+            added_x = len(tx) - len_tx_before
+            if verbose:
                 print(f"    Inserted {added_x} knots in X")
-            grew_total += added_x
-            if added_x:
-                last_axis = "x"
-        if nply:
-            ty, added_y = _batch_insert_axis(y_fit, ty, ky, fpinty, nply, yb, ye, nesty)
-            if verbose and added_y:
+            # grew_total += added_x
+            # if added_x:
+            last_axis = "x"
+        else:
+            len_ty_before = len(ty)
+            ty, nplusy = _generate_knots(
+                y_fit, yb, ye, ky, s, nmin=nminy, nmax=nmaxy,
+                nest=nesty, t=ty, fp=fp, fpold=fpold,
+                residuals=np.ascontiguousarray(np.sum(R**2, 0)),
+                nplus=nplusy)
+            added_y = len(ty) - len_ty_before
+            if verbose:
                 print(f"    Inserted {added_y} knots in Y")
-            grew_total += added_y
-            if added_y:
-                last_axis = "y"
-        if last_axis == "x" and nplx:
-            tx, added_x = _batch_insert_axis(x_fit, tx, kx, fpintx, nplx, xb, xe, nestx)
-            if verbose and added_x:
-                print(f"    Inserted {added_x} knots in X (post-Y)")
-            grew_total += added_x
-            if added_x:
-                last_axis = "x"
+            # grew_total += added_y
+            # if added_y:
+            last_axis = "y"
 
-        if grew_total == 0:
-            if verbose:
-                print("[interp-exit] cannot add more knots "
-                      "-> building interpolatory knots & returning p=0")
-            tx = make_interpolatory_knots(x_fit, kx)
-            ty = make_interpolatory_knots(y_fit, ky)
 
-            (Ax, offset_x, nc_x,
-             Ay, offset_y, nc_y,
-             Drx, offset_dx, nc_dx,
-             Dry, offset_dy, nc_dy, Q) = build_matrices(
-                x_fit, y_fit, Z, tx, ty, kx, ky)
-            C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
-                                  Drx, offset_dx,
-                                  Ay, offset_y, nc_y, Q,
-                                  Dry, offset_dy, -1,
-                                  kx, tx, x_fit, ky,
-                                  ty, y_fit, Z_fit)
-            if fp < s:
-                (Ax, offset_x, nc_x,
-                 Ay, offset_y, nc_y,
-                 Drx, offset_dx, _,
-                 Dry, offset_dy, _, Q) = build_matrices(
-                    x_fit, y_fit, Z, tx, ty, kx, ky)
-                _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-                                  Drx, offset_dx,
-                                  Ay, offset_y, nc_y, Q,
-                                  Dry, offset_dy,
-                                  kx, tx, x_fit, ky, ty, y_fit,
-                                  Z_fit, s, fp0, p_init=1, verbose=verbose)
-                return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
-            else:
-                return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+        # if grew_total == 0:
+        #     if verbose:
+        #         print("[interp-exit] cannot add more knots "
+        #               "-> building interpolatory knots & returning p=0")
+        #     tx = make_interpolatory_knots(x_fit, kx)
+        #     ty = make_interpolatory_knots(y_fit, ky)
 
-        moves += grew_total
-        if moves >= mpm:
-            if verbose:
-                print("Reached mpm limit, stopping growth")
-            break
+        #     (Ax, offset_x, nc_x,
+        #      Ay, offset_y, nc_y,
+        #      Drx, offset_dx, nc_dx,
+        #      Dry, offset_dy, nc_dy, Q) = build_matrices(
+        #         x_fit, y_fit, Z, tx, ty, kx, ky)
+        #     C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
+        #                           Drx, offset_dx,
+        #                           Ay, offset_y, nc_y, Q,
+        #                           Dry, offset_dy, -1,
+        #                           kx, tx, x_fit, ky,
+        #                           ty, y_fit, Z_fit)
+        #     if fp < s:
+        #         (Ax, offset_x, nc_x,
+        #          Ay, offset_y, nc_y,
+        #          Drx, offset_dx, _,
+        #          Dry, offset_dy, _, Q) = build_matrices(
+        #             x_fit, y_fit, Z, tx, ty, kx, ky)
+        #         _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
+        #                           Drx, offset_dx,
+        #                           Ay, offset_y, nc_y, Q,
+        #                           Dry, offset_dy,
+        #                           kx, tx, x_fit, ky, ty, y_fit,
+        #                           Z_fit, s, fp0, p_init=1, verbose=verbose)
+        #         return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
+        #     else:
+        #         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+
+        # moves += grew_total
+        # if moves >= mpm:
+        #     if verbose:
+        #         print("Reached mpm limit, stopping growth")
+        #     break
 
         fpold = fp
 
-        if len(tx) >= nmaxx or len(ty) >= nmaxy:
-            if verbose:
-                print(f"[interp-exit] reached nmaxx/nmaxy: nx={len(tx)} ny={len(ty)} "
-                      "-> building interpolatory knots & returning p=0")
-            tx = make_interpolatory_knots(x_fit, kx)
-            ty = make_interpolatory_knots(y_fit, ky)
+        # if len(tx) >= nmaxx or len(ty) >= nmaxy:
+        #     if verbose:
+        #         print(f"[interp-exit] reached nmaxx/nmaxy: nx={len(tx)} ny={len(ty)} "
+        #               "-> building interpolatory knots & returning p=0")
+        #     tx = make_interpolatory_knots(x_fit, kx)
+        #     ty = make_interpolatory_knots(y_fit, ky)
 
-            (Ax, offset_x, nc_x,
-             Ay, offset_y, nc_y,
-             Drx, offset_dx, _,
-             Dry, offset_dy, _, Q) = build_matrices(
-                x_fit, y_fit, Z, tx, ty, kx, ky)
-            C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
-                                  Drx, offset_dx,
-                                  Ay, offset_y, nc_y, Q,
-                                  Dry, offset_dy, -1,
-                                  kx, tx, x_fit, ky,
-                                  ty, y_fit, Z_fit)
-            if fp < s:
-                (Ax, offset_x, nc_x,
-                 Ay, offset_y, nc_y,
-                 Drx, offset_dx, _,
-                 Dry, offset_dy, _, Q) = build_matrices(
-                    x_fit, y_fit, Z, tx, ty, kx, ky)
-                _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-                                  Drx, offset_dx,
-                                  Ay, offset_y, nc_y, Q,
-                                  Dry, offset_dy,
-                                  kx, tx, x_fit, ky, ty, y_fit,
-                                  Z_fit, s, fp0, verbose=verbose)
-                return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
-            else:
-                return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+        #     (Ax, offset_x, nc_x,
+        #      Ay, offset_y, nc_y,
+        #      Drx, offset_dx, _,
+        #      Dry, offset_dy, _, Q) = build_matrices(
+        #         x_fit, y_fit, Z, tx, ty, kx, ky)
+        #     C0, fp = _solve_2d_fitpack(Ax, offset_x, nc_x,
+        #                           Drx, offset_dx,
+        #                           Ay, offset_y, nc_y, Q,
+        #                           Dry, offset_dy, -1,
+        #                           kx, tx, x_fit, ky,
+        #                           ty, y_fit, Z_fit)
+        #     if fp < s:
+        #         (Ax, offset_x, nc_x,
+        #          Ay, offset_y, nc_y,
+        #          Drx, offset_dx, _,
+        #          Dry, offset_dy, _, Q) = build_matrices(
+        #             x_fit, y_fit, Z, tx, ty, kx, ky)
+        #         _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
+        #                           Drx, offset_dx,
+        #                           Ay, offset_y, nc_y, Q,
+        #                           Dry, offset_dy,
+        #                           kx, tx, x_fit, ky, ty, y_fit,
+        #                           Z_fit, s, fp0, verbose=verbose)
+        #         return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
+        #     else:
+        #         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
     if verbose:
         print(f"Growth end with fp={fp:.6e} > s={s:.6e} "
