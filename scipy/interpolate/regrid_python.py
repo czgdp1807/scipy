@@ -46,8 +46,8 @@ After solving on the current knots (initially at the interpolatory limit,
 
 We then **project** residual energy to knot spans along each axis:
 
-- Row energy  `row_energy[i] = sum(R[i, j]^2, j)`  → accumulated into `fpintx`.
-- Column energy `col_energy[j] = sum(R[i, j]^2, i)` → accumulated into `fpinty`.
+- Row energy  `row_energy[i] = sum(R[i, j]^2, j)`  -> accumulated into `fpintx`.
+- Column energy `col_energy[j] = sum(R[i, j]^2, i)` -> accumulated into `fpinty`.
 
 These per-span energies guide **adaptive knot insertion**: the algorithm picks
 high-energy spans (skipping zero-length ones) and inserts data-aligned knots
@@ -79,27 +79,31 @@ as FITPACK, but without relying on the single monolithic REGRID entry point.
 
 5) Execution flow (who calls whom)
 ----------------------------------
-1. `regrid_python`
-   - Validates monotonic `x`, `y`, grid shapes, `s ≥ 0`, normalizes `bbox`.
-   - Dispatches to `_regrid_python_fitpack`.
+1. **`regrid_python`**
+   - Validates inputs (strictly increasing `x`, `y`; grid shape; `s >= 0`),
+     normalizes `bbox`,
+   - Delegates to `_regrid_python_fitpack`.
 
-2. `_regrid_python_fitpack`
-   - Applies `bbox` to get `(x_fit, y_fit, Z_fit)`.
-   - Initializes clamped knots (interpolatory if `s == 0`, open-uniform otherwise).
+2. **`_regrid_python_fitpack`**
+   - Applies `bbox` -> `(x_fit, y_fit, Z_fit)`.
+   - Initializes clamped knots using `_generate_knots`:
+     - if `s == 0`: interpolatory setup (no internal knots),
+     - else: open-uniform ends without interior knots.
    - **Loop:**
-     - Build 1-D banded matrices via `build_matrices` (calls `data_matrix`, `disc`).
-     - Call `_solve_2d_fitpack` with `p = ∞` (sentinel `-1`) for the current knots.
-     - If `fp ≤ s`, return. Otherwise compute `fpintx/fpinty`,
-       decide batches, and insert knots.
-   - If growth saturates with `fp > s`, run `_p_search_hit_s` to tune `p`.
+     - Build 1-D banded matrices via `build_matrices` (`data_matrix`, `disc`).
+     - Call `_solve_2d_fitpack` with `p = ∞` (sentinel `-1`) on the current knots.
+     - If `s == 0`: return; else if `fp < s`: break; else compute residuals,
+       decide new knots with `_generate_knots` (x and y alternate), and continue.
+   - If the loop ends with `fp > s`, call `_p_search_hit_s` to tune `p`
+     to achieve `fp(p) ~ s`, and return the resulting `NdBSpline`.
 
-3. `_p_search_hit_s`
-   - Wraps the problem in `F`, which evaluates `fp(p)` by invoking `_solve_2d_fitpack`.
-   - Uses `root_rati` to find `p*` with `fp(p*) ~ s`, caching the resulting `C`.
+3. **`_p_search_hit_s`**
+   - Wraps the problem in `F` (maps `p` -> `fp(p)` by invoking `_solve_2d_fitpack`).
+   - Uses `root_rati` to find `p*` with `fp(p*) ~ s`, caching `C`.
 
-4. `_solve_2d_fitpack`
+4. **`_solve_2d_fitpack`**
    - Performs the two separable 1-D augmented QR solves (`[A; D/p]`) along x then y,
-     returns coefficients `C` and residual `fp`.
+     evaluates `fp`, and returns `(C, fp)`.
 
 The final `(tx, ty, C)` are packaged as an `NdBSpline` for convenient evaluation.
 """
@@ -400,7 +404,7 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     C, _, fp = _dierckx.fpback(
         Ay_aug, nc_augy,
         x_y, W1, ty, ky, w_y,    # y = W1 (dummy)
-        W1,                      # yw = RHS = W1 → returns C
+        W1,                      # yw = RHS = W1 -> returns C
         False
     )
 
