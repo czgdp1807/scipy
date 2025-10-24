@@ -989,19 +989,22 @@ def _regrid_python_fitpack(
         print(f"Growth end with fp={fp:.6e} > s={s:.6e} "
               f"({'nest exhausted' if (mx_head==0 and my_head==0) else 'early stop'})")
 
-    (Ax, offset_x, nc_x,
-     Ay, offset_y, nc_y,
-     Drx, offset_dx, _,
-     Dry, offset_dy, _, Q) = build_matrices(
-        x_fit, y_fit, Z, tx, ty, kx, ky)
-    _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-                                     Drx, offset_dx,
-                                     Ay, offset_y, nc_y, Q,
-                                     Dry, offset_dy,
-                                     kx, tx, x_fit, ky,
-                                     ty, y_fit,
-                                     Z_fit, s, fp0, maxit=maxit)
-    return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
+    if len(tx) != nminx or len(ty) != nminy:
+        (Ax, offset_x, nc_x,
+        Ay, offset_y, nc_y,
+        Drx, offset_dx, _,
+        Dry, offset_dy, _, Q) = build_matrices(
+            x_fit, y_fit, Z, tx, ty, kx, ky)
+        _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
+                                        Drx, offset_dx,
+                                        Ay, offset_y, nc_y, Q,
+                                        Dry, offset_dy,
+                                        kx, tx, x_fit, ky,
+                                        ty, y_fit,
+                                        Z_fit, s, fp0, maxit=maxit)
+        return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
+    else:
+        return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
 
 def regrid_python(x, y, Z, *,
