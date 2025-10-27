@@ -386,34 +386,30 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
 
     _dierckx.qr_reduce(Ax_aug, offset_aug_x, nc_augx, Q)
 
-    Q_t = np.ascontiguousarray(Q)
     cT, _, _ = _dierckx.fpback(
         Ax_aug, nc_augx, x_x,
-        Q_t, tx, kx, w_x,
-        Q_t, False
+        Q, tx, kx, w_x,
+        Q, False
     )
-    W = cT.T
+    Q = np.ascontiguousarray(cT.T)
 
     if p != -1:
-        W = np.vstack([W, np.zeros((Dy.shape[0], W.shape[1]), dtype=np.float64)])
+        Q = np.vstack([Q, np.zeros((Dy.shape[0], Q.shape[1]), dtype=np.float64)])
 
-    WT = np.ascontiguousarray(W)
-    _dierckx.qr_reduce(Ay_aug, offset_aug_y, nc_augy, WT)
-    W1 = np.ascontiguousarray(WT)
+    _dierckx.qr_reduce(Ay_aug, offset_aug_y, nc_augy, Q)
 
     C, _, fp = _dierckx.fpback(
         Ay_aug, nc_augy,
-        x_y, W1, ty, ky, w_y,    # y = W1 (dummy)
-        W1,                      # yw = RHS = W1 -> returns C
+        x_y, Q, ty, ky, w_y,    # y = W1 (dummy)
+        Q,                      # yw = RHS = W1 -> returns C
         False
     )
 
-    C = C.T
     _Ax = BSpline.design_matrix(x_x, tx, kx, extrapolate=False)
     _Ay = BSpline.design_matrix(x_y, ty, ky, extrapolate=False)
-    zhat = (_Ax @ C) @ _Ay.T
+    zhat = _Ax @ C.T @ _Ay.T
     fp = fp_residual(z, zhat)
-    return C, fp
+    return C.T, fp
 
 class F:
     """
