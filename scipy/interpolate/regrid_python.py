@@ -387,6 +387,7 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     w_x = np.ones_like(x_x)
     w_y = np.ones_like(x_y)
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L97-L105
     # Build the augmented banded matrix for x:
     #   - If p != -1, stack (Dx / p) under Ax for FITPACK-style smoothing.
     #   - If p == -1, _stack_augmented_fitpack omits the penalty part entirely.
@@ -403,17 +404,20 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
 
     # If we stacked penalty rows on the x side, the RHS must be padded with zeros
     # to match the augmented row count for the QR reduction call.
-    if p != -1:
+    if p != -1: # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L97
         # Dx.shape[0] is the number of penalty rows; add that many zero rows
         # so Ax_aug and Q have compatible leading dimensions for in-place QR.
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L110-L118
         Q = np.vstack([Q, np.zeros((Dx.shape[0], Q.shape[1]), dtype=float)])
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L106-L175
     # Perform in-place banded QR reduction of the x-augmented system:
     # This orthogonalizes/eliminates along x for all RHS columns in Q simultaneously.
     # After this, fpback can do x-direction back-substitution to
     # get c^T (partial coeffs).
     _dierckx.qr_reduce(Ax_aug, offset_aug_x, nc_augx, Q)
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L246-L253
     # Back-substitute along x to solve the reduced system:
     #   cT has shape (ny_data_like, ncoef_x) in this calling pattern, i.e. per y-column.
     # The API uses:
@@ -431,12 +435,15 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     Q = np.ascontiguousarray(T.T)
 
     # If we stacked penalty rows on the y side, pad RHS with zeros to match Ay_aug.
-    if p != -1:
+    if p != -1: # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L97
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L110-L118
         Q = np.vstack([Q, np.zeros((Dy.shape[0], Q.shape[1]), dtype=float)])
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L176-L245
     # Perform in-place banded QR reduction along y for all columns of Q.
     _dierckx.qr_reduce(Ay_aug, offset_aug_y, nc_augy, Q)
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpgrre.f#L254-L269
     # Final back-substitution along y:
     # Returns:
     #   C  : coefficient matrix (orientation matches Ay/BSpline expectations here)
@@ -544,6 +551,7 @@ class F:
         self.fp = fp
         return fp
 
+# https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L301-L367
 def _p_search_hit_s(
     Ax, offs_x, ncx, Dx, offs_dx, Ay,
     offs_y, ncy, Q, Dy, offs_dy, kx,
@@ -934,7 +942,7 @@ def _regrid_python_fitpack(
     moves = 0
     fpold = None
     last_axis = "y"
-    mpm = len(x) + len(y) + 1
+    mpm = len(x) + len(y)
     nx = len(tx)
     ny = len(ty)
     mx_head = max(0, nestx - nx) if nestx is not None else None
@@ -943,6 +951,7 @@ def _regrid_python_fitpack(
     nplusx = None
     nplusy = None
 
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
     for it in range(mpm):
         nx, ny = len(tx), len(ty)
 
