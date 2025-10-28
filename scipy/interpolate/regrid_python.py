@@ -272,55 +272,6 @@ def _stack_augmented_fitpack(A, offs_a, D, offs_d, nc, k, p):
     offset = np.r_[offs_a, offs_d]
     return AA, offset, nc
 
-def will_square_overflow(x, dtype=np.float64):
-    """
-    Check if squaring values would overflow the given dtype.
-
-    Parameters
-    ----------
-    x : array_like
-        Input values to test.
-    dtype : dtype, optional
-        Floating dtype to test against, by default ``np.float64``.
-
-    Returns
-    -------
-    ndarray of bool
-        Boolean mask where True indicates ``x**2`` would overflow ``dtype``.
-
-    Notes
-    -----
-    Compares ``abs(x)`` to ``sqrt(np.finfo(dtype).max)`` elementwise.
-    """
-    max_val = np.finfo(dtype).max
-    return abs(x) > np.sqrt(max_val)
-
-def fp_residual(Z, Zhat):
-    """
-    Compute FITPACK-style residual sum of squares ``fp``.
-
-    Parameters
-    ----------
-    Z : array_like
-        Target data (observed grid).
-    Zhat : array_like
-        Predicted/fitted grid, broadcastable to ``Z``.
-
-    Returns
-    -------
-    float
-        Residual sum of squares, or ``inf`` if non-finite or overflow detected.
-
-    Notes
-    -----
-    Guards against NaNs/Infs and overflow by early returning ``inf``.
-    """
-    R = Z - Zhat
-
-    if will_square_overflow(R).any() or (not np.isfinite(R).all()):
-        return float("inf")
-
-    return np.sum(np.square(R))
 
 def _solve_2d_fitpack(Ax, offs_x, ncx,
                       Dx, offs_dx,
@@ -330,6 +281,65 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
                       ky, ty, x_y, z):
     """
     Solve the 2-D tensor-product spline system using separable banded QR.
+
+    ================================================================
+    Mathematical model (step by step, plain text)
+    ================================================================
+
+    Shapes:
+        Z      : (mx, my)  -> original data
+        Ax, Ay : design matrices for x and y
+        Dx, Dy : roughness penalty matrices for x and y
+        C      : (nx, ny)  -> spline coefficients to solve for
+
+    Surface approximation:
+        Zhat = Ax * C * Ay^T
+
+    Objective (smoothing formulation):
+        minimize ||Ax*C*Ay^T - Z||^2 + (1/p)*(||Dx*C||^2 + ||C*Dy^T||^2)
+
+    In practice (FITPACK-style separable approach), we solve this in two stages:
+
+    --------------------------------------------------------
+    Stage 1 (x-direction solve for all y-columns together):
+    --------------------------------------------------------
+
+        For each column of Z:
+            minimize ||Ax*T - Z||^2 + (1/p)*||Dx*T||^2
+
+        This is equivalent to the augmented least-squares system:
+            [Ax]       [Z]
+            [Dx/p] * T = [0]
+
+        i.e.  minimize || [Ax; Dx/p]*T - [Z; 0] ||^2
+
+        The solution T is obtained by QR reduction and back-substitution.
+
+    --------------------------------------------------------
+    Stage 2 (y-direction solve using transposed result):
+    --------------------------------------------------------
+        Now treat T^T as the new RHS for the y-direction:
+            minimize ||Ay*C^T - T^T||^2 + (1/p)*||Dy*C^T||^2
+
+        Equivalent to augmented system:
+            [Ay]       [T^T]
+            [Dy/p] * C^T = [0]
+
+        i.e.  minimize || [Ay; Dy/p]*C^T - [T^T; 0] ||^2
+
+        Solving this gives C^T (then transposed back to C).
+
+    --------------------------------------------------------
+    Interpolation limit:
+    --------------------------------------------------------
+        If p == -1, penalties are omitted (Dx, Dy are not stacked).
+        The solver behaves as a near-interpolating system.
+
+    --------------------------------------------------------
+    Residual computation:
+    --------------------------------------------------------
+        Zhat = Ax * C * Ay^T
+        fp   = sum((Z - Zhat)^2)
 
     Parameters
     ----------
@@ -373,42 +383,85 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     yielding an interpolatory surface.  The resulting coefficients and residual
     follow the same conventions as FITPACK's `fpgrre`.
     """
+    # Dummy unit weights for FITPACK fpback APIs.
     w_x = np.ones_like(x_x)
     w_y = np.ones_like(x_y)
 
+    # Build the augmented banded matrix for x:
+    #   - If p != -1, stack (Dx / p) under Ax for FITPACK-style smoothing.
+    #   - If p == -1, _stack_augmented_fitpack omits the penalty part entirely.
+    # Returns:
+    #   Ax_aug      : augmented banded matrix (data [+ penalty]).
+    #   offset_aug_x: band offsets compatible with Ax_aug.
+    #   nc_augx     : number of top data rows within Ax_aug (== ncx).
     Ax_aug, offset_aug_x, nc_augx = _stack_augmented_fitpack(
         Ax, offs_x, Dx, offs_dx, ncx, kx, p)
+
+    # Same for y: build Ay_aug with (Dy / p) stacked if p != -1.
     Ay_aug, offset_aug_y, nc_augy = _stack_augmented_fitpack(
         Ay, offs_y, Dy, offs_dy, ncy, ky, p)
 
+    # If we stacked penalty rows on the x side, the RHS must be padded with zeros
+    # to match the augmented row count for the QR reduction call.
     if p != -1:
-        Q = np.vstack([Q, np.zeros((Dx.shape[0], Q.shape[1]), dtype=np.float64)])
+        # Dx.shape[0] is the number of penalty rows; add that many zero rows
+        # so Ax_aug and Q have compatible leading dimensions for in-place QR.
+        Q = np.vstack([Q, np.zeros((Dx.shape[0], Q.shape[1]), dtype=float)])
 
+    # Perform in-place banded QR reduction of the x-augmented system:
+    # This orthogonalizes/eliminates along x for all RHS columns in Q simultaneously.
+    # After this, fpback can do x-direction back-substitution to
+    # get c^T (partial coeffs).
     _dierckx.qr_reduce(Ax_aug, offset_aug_x, nc_augx, Q)
 
-    cT, _, _ = _dierckx.fpback(
+    # Back-substitute along x to solve the reduced system:
+    #   cT has shape (ny_data_like, ncoef_x) in this calling pattern, i.e. per y-column.
+    # The API uses:
+    #   Ax_aug, nc_augx: reduced upper structure
+    #   x_x, tx, kx, w_x: x-sample grid, knot vector, degree, and (unit) weights
+    #   Q: RHS (current)
+    T, _, _ = _dierckx.fpback(
         Ax_aug, nc_augx, x_x,
         Q, tx, kx, w_x,
         Q, False
     )
-    Q = np.ascontiguousarray(cT.T)
 
+    # We now want to treat the *y*-direction solve with these as the new RHS.
+    # Transpose so each column corresponds to a y-solve RHS consistently.
+    Q = np.ascontiguousarray(T.T)
+
+    # If we stacked penalty rows on the y side, pad RHS with zeros to match Ay_aug.
     if p != -1:
-        Q = np.vstack([Q, np.zeros((Dy.shape[0], Q.shape[1]), dtype=np.float64)])
+        Q = np.vstack([Q, np.zeros((Dy.shape[0], Q.shape[1]), dtype=float)])
 
+    # Perform in-place banded QR reduction along y for all columns of Q.
     _dierckx.qr_reduce(Ay_aug, offset_aug_y, nc_augy, Q)
 
+    # Final back-substitution along y:
+    # Returns:
+    #   C  : coefficient matrix (orientation matches Ay/BSpline expectations here)
+    #   fp : FITPACK's internal residual metric from the y-solve
+    #        (we recompute below anyway)
     C, _, fp = _dierckx.fpback(
         Ay_aug, nc_augy,
-        x_y, Q, ty, ky, w_y,    # y = W1 (dummy)
-        Q,                      # yw = RHS = W1 -> returns C
+        x_y, Q, ty, ky, w_y,    # y-grid, y-knots, degree, weights
+        Q,                      # RHS -> solution becomes coefficients along y
         False
     )
 
+    # Build explicit (dense) design matrices to evaluate the fitted surface:
+    # _Ax: [mx × nx_coef], _Ay: [my × ny_coef]
     _Ax = BSpline.design_matrix(x_x, tx, kx, extrapolate=False)
     _Ay = BSpline.design_matrix(x_y, ty, ky, extrapolate=False)
+
+    # Evaluate the fitted surface: zhat = Ax * C^T * Ay^T
+    # Note: C currently aligns so that C.T matches x-first multiplication order.
     zhat = _Ax @ C.T @ _Ay.T
-    fp = fp_residual(z, zhat)
+
+    # Compute the residual sum of squares against the original data z.
+    fp = np.sum(np.square(z - zhat))
+
+    # Return coefficients in the conventional (nx_coef, ny_coef) orientation and fp.
     return C.T, fp
 
 class F:
@@ -560,7 +613,7 @@ def _p_search_hit_s(
     ftol = max(s * tol_rel, 1e-12)
 
     r = root_rati(g, p_init, bracket, ftol, maxit=maxit)
-    p_star = float(r.root)
+    p_star = r.root
     fp_star = fp_at(p_star)
     C_star = fp_at.C
     if verbose:
@@ -628,6 +681,123 @@ TOL = 0.001
 def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
                     nest=None, t=None, fp=None, fpold=None,
                     residuals=None, nplus=None):
+    """
+    Knot-growth helper for 1-D smoothing B-splines.
+
+    What this function does
+    -----------------------
+    - Grows a non-periodic knot vector t iteratively for a target smoothing s,
+      following the classic FITPACK knot-augmentation heuristics (fpcurf family).
+    - Uses the same stopping rule as FITPACK: if |fp - s| < acc or fp < s
+      (with acc = s*TOL), accept current t.
+    - When more knots are needed, computes nplus (how many knots to insert next)
+      based on the previous decrease in residual (fpold - fp), then calls add_knot
+      up to nplus times.
+    - Provides special handling for s == 0 (interpolation): returns a not-a-knot
+      vector immediately.
+
+    How it compares with _fitpack_repro.py::_generate_knots_impl
+    -------------------------------------------------------------
+
+    Similarities:
+      1) Same growth logic and thresholds:
+         - acc = s*TOL
+         - Accept if |fp - s| < acc or fp < s
+         - nplus update rule derived from delta = fpold - fp, with doubling/halving caps
+      2) Same bounds for non-periodic splines:
+         - nmin = 2*(k+1)  (LSQ polynomial stage)
+         - nmax = m + k + 1 (interpolating spline)
+      3) Same storage guard:
+         - If nest is too small (< 2*(k+1)), raise; if n hits nest, stop and return t
+      4) Same end behavior at the "interpolating" cap:
+         - When n >= nmax, switch to an interpolation-layout knot
+           vector (here: not-a-knot)
+
+    Differences:
+      1) API style:
+         - _generate_knots_impl is a generator that YIELDS a sequence of trial knot
+           vectors (t) on each iteration and internally recomputes residuals/fp.
+         - This function is a stateful helper that RETURNS updated values and expects
+           the caller to manage the loop, residuals, fp, and fpold between calls.
+             * First call: pass t=None to initialize; returns (t, nest, nmin, nmax)
+             * Subsequent calls: pass updated fp, fpold, residuals, nplus, and current t
+               to either accept, grow knots, or stop.
+      2) Periodicity:
+         - _generate_knots_impl supports periodic=True (with per = xe - xb, periodic
+           wrapping of boundary knots, and periodic-specific acceptance checks).
+         - This function is non-periodic only (no periodic branch, no per, no periodic
+           boundary updates). It uses not-a-knot when reaching nmax.
+      3) Residual computation:
+         - _generate_knots_impl calls an internal
+           _get_residuals(x, y, t, k, w, periodic) each iteration and
+           yields after setting fp and residuals.
+         - This function does NOT compute residuals/fp. The caller must compute them
+           externally and pass:
+             * residuals: from the last solve with current t
+             * fp: current sum of squared residuals
+             * fpold: previous fp (for nplus update)
+      4) Return values:
+         - _generate_knots_impl yields t multiple times and eventually returns None.
+         - This function returns different tuples depending on phase:
+             * Initialization (t is None): (t, nest, nmin, nmax)
+             * Acceptance (|fp - s| < acc or fp < s): returns None (caller stops)
+             * Growth step: (t, nplus)
+             * Early stop due to n >= nmax or n >= nest: (t, nplus) or (t,) as coded
+
+    Parameters
+    ----------
+    x : 1-D ndarray
+        Strictly increasing sample coordinates.
+    xb, xe : float
+        Domain endpoints used to seed the initial no-internal-knots vector.
+    k : int
+        Spline degree.
+    s : float
+        Smoothing target (> 0 for smoothing; if s == 0, do pure interpolation).
+    nmin, nmax : int, optional
+        Lower/upper bounds on knot count. If t is None, these are derived as:
+          nmin = 2*(k+1), nmax = m + k + 1 (m = x.size).
+    nest : int, optional
+        Storage cap for knots. If t is None and nest is None, it defaults to
+        max(m + k + 1, 2*k + 3). Must satisfy nest >= 2*(k+1).
+    t : 1-D ndarray, optional
+        Current knot vector. If None, the function initializes t as
+        [xb]*(k+1) + [xe]*(k+1).
+    fp, fpold : float, optional
+        Current and previous residual sums of squares (needed after initialization).
+    residuals : 1-D ndarray, optional
+        Most recent residual signal used by add_knot to place the next knot.
+    nplus : int, optional
+        Previous iteration's proposed number of knots to add (used in nplus update).
+
+    Returns
+    -------
+    On first call (t is None):
+        t, nest, nmin, nmax
+            Initialized knot vector and derived limits.
+    On acceptance (|fp - s| < acc or fp < s):
+        None
+            Caller should stop; current t is acceptable.
+    On growth step:
+        t, nplus
+            Updated knot vector after inserting up to nplus knots;
+            also the nplus chosen.
+    On early stop due to n >= nmax or n >= nest:
+        t, nplus   (or just t depending on branch)
+            Final knot vector respecting the cap.
+
+    Notes
+    -----
+    - Use this as a building block in an outer loop:
+        1) Call with t=None to initialize (and receive nest, nmin, nmax).
+        2) Fit/evaluate to compute fp and residuals for current t.
+        3) Call again with updated fp, fpold, residuals to either accept, or
+           get back an updated t (and nplus) to continue.
+    - For s == 0, this routine returns a not-a-knot vector immediately and
+      expects the caller to perform interpolation.
+    - This helper mirrors FITPACK's growth heuristics but intentionally leaves
+      residual computation and periodic handling to the caller/higher level.
+    """
 
     if s == 0:
         if nest is not None:
@@ -657,7 +827,7 @@ def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
         fpold = 0.0
 
         # start from no internal knots
-        t = np.asarray([xb]*(k+1) + [xe]*(k+1), dtype=float)
+        t = np.asarray([xb]*(k+1) + [xe]*(k+1))
 
         return t, nest, nmin, nmax
 
@@ -745,8 +915,6 @@ def _regrid_python_fitpack(
     energy and optionally performs a 1-D search over `p` to satisfy `fp ~ s`.
     """
     x_fit, y_fit, Z_fit, _, _ = _apply_bbox_grid(x, y, Z, bbox)
-    x_fit = x_fit.astype(float)
-    y_fit = y_fit.astype(float)
 
     if x_fit.size < (kx + 1) or y_fit.size < (ky + 1):
         raise ValueError(
@@ -903,8 +1071,8 @@ def regrid_python(x, y, Z, *,
     (infinite-p) case.
     """
 
-    x = np.asarray(x)
-    y = np.asarray(y)
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
     Z = np.asarray(Z, float)
     bbox = np.ravel(bbox)
 
