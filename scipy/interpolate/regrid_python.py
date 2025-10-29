@@ -561,7 +561,7 @@ def _p_search_hit_s(
     Ax, offs_x, ncx, Dx, offs_dx, Ay,
     offs_y, ncy, Q, Dy, offs_dy, kx,
     tx, x_x, ky, ty, x_y, z, s, fp0, *,
-    p_init=1.0, tol_rel=1e-3, maxit=40, verbose=False):
+    p_init=1.0, tol_rel=1e-3, maxit=40):
     """
     Search for a smoothing parameter `p` such that `fp(p) ~ s`.
 
@@ -593,8 +593,6 @@ def _p_search_hit_s(
         Relative tolerance for matching `fp(p)` to `s`.
     maxit : int, optional
         Maximum iterations for the root search.
-    verbose : bool, optional
-        Print diagnostic output if True.
 
     Returns
     -------
@@ -629,8 +627,6 @@ def _p_search_hit_s(
     p_star = r.root
     fp_star = fp_at(p_star)
     C_star = fp_at.C
-    if verbose:
-        print(f"[psearch] root_rati -> p={p_star:.6e}, fp={fp_star:.6e}")
 
     return p_star, C_star, fp_star
 
@@ -862,7 +858,7 @@ def _add_knots(x, k, s, t, nmin, nmax,
 def _regrid_python_fitpack(
     x, y, Z, *, kx=3, ky=3, s=0.0,
     maxit=50, nestx=None, nesty=None,
-    bbox=[None]*4, verbose=False):
+    bbox=[None]*4):
     """
     Core adaptive bivariate spline fitter using the 1/p-penalty convention.
 
@@ -883,8 +879,6 @@ def _regrid_python_fitpack(
         Max coefficient counts per axis (nesting limits).
     bbox : sequence of 4 scalars
         Optional domain limits `(xb, xe, yb, ye)`. Use `None` entries to skip.
-    verbose : bool, optional
-        Print detailed iteration logs if True.
 
     Returns
     -------
@@ -939,21 +933,15 @@ def _regrid_python_fitpack(
     tx, nestx, nminx, nmaxx = _initialise_knots(x_fit.size, xb, xe, kx, nest=nestx)
     ty, nesty, nminy, nmaxy = _initialise_knots(y_fit.size, yb, ye, ky, nest=nesty)
 
-    moves = 0
     fpold = None
     last_axis = "y"
     mpm = len(x) + len(y)
-    nx = len(tx)
-    ny = len(ty)
-    mx_head = max(0, nestx - nx) if nestx is not None else None
-    my_head = max(0, nesty - ny) if nesty is not None else None
     fp0 = None
     nplusx = None
     nplusy = None
 
     # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
-    for it in range(mpm):
-        nx, ny = len(tx), len(ty)
+    for _ in range(mpm):
 
         (Ax, offset_x, nc_x,
          Ay, offset_y, nc_y,
@@ -972,12 +960,6 @@ def _regrid_python_fitpack(
         if len(tx) == nminx and len(ty) == nminy:
             fp0 = fp
 
-        if verbose:
-            print(f"[it={it}] p=0 fp={fp:.6e} s={s:.6e} "
-                  f"nx={nx} ny={ny} moves={moves}/{mpm}")
-            print(f"    headroom: mx_head={mx_head} my_head={my_head} "
-                  f"(nestx={nestx}, nesty={nesty})")
-
         if fp < s:
             break
 
@@ -992,36 +974,22 @@ def _regrid_python_fitpack(
         R = Z_fit - Z0
 
         # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L265-L295
-        added_x = None
-        added_y = None
         if last_axis == "y":
-            len_tx_before = len(tx)
             tx, nplusx = _add_knots(
                 x_fit, kx, s, tx, nmin=nminx, nmax=nmaxx,
                 nest=nestx, fp=fp, fpold=fpold,
                 residuals=np.sum(R**2, axis=1),
                 nplus=nplusx)
-            added_x = len(tx) - len_tx_before
-            if verbose:
-                print(f"    Inserted {added_x} knots in X")
             last_axis = "x"
         else:
-            len_ty_before = len(ty)
             ty, nplusy = _add_knots(
                 y_fit, ky, s, ty, nmin=nminy, nmax=nmaxy,
                 nest=nesty, fp=fp, fpold=fpold,
                 residuals=np.sum(R**2, axis=0),
                 nplus=nplusy)
-            added_y = len(ty) - len_ty_before
-            if verbose:
-                print(f"    Inserted {added_y} knots in Y")
             last_axis = "y"
 
         fpold = fp
-
-    if verbose:
-        print(f"Growth end with fp={fp:.6e} > s={s:.6e} "
-              f"({'nest exhausted' if (mx_head==0 and my_head==0) else 'early stop'})")
 
     if len(tx) != nminx or len(ty) != nminy:
         (Ax, offset_x, nc_x,
@@ -1043,7 +1011,7 @@ def _regrid_python_fitpack(
 
 def regrid_python(x, y, Z, *,
     kx=3, ky=3, s=0.0, maxit=50, nestx=None,
-    nesty=None, bbox=[None]*4, verbose=False):
+    nesty=None, bbox=[None]*4):
     """
     Public interface for 2-D smoothing B-spline fitting (1/p penalty form).
 
@@ -1067,8 +1035,6 @@ def regrid_python(x, y, Z, *,
         Nesting limits for coefficient counts per axis.
     bbox : sequence of 4 scalars
         Optional bounding box `(xb, xe, yb, ye)`; use `None` entries to disable.
-    verbose : bool, optional
-        Print iteration diagnostics if True.
 
     Returns
     -------
@@ -1103,5 +1069,4 @@ def regrid_python(x, y, Z, *,
 
     return _regrid_python_fitpack(
         x, y, Z, kx=kx, ky=ky, s=s, maxit=maxit,
-        nestx=nestx, nesty=nesty, bbox=bbox,
-        verbose=verbose)
+        nestx=nestx, nesty=nesty, bbox=bbox)
