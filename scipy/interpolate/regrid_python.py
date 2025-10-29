@@ -831,8 +831,8 @@ def _add_knots(x, k, s, t, nmin, nmax,
     # ### c  increase the number of knots. ###
 
     # c  determine the number of knots nplus we are going to add.
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L248-L261
     if n == nmin:
-        # the first iteration
         nplus = 1
     else:
         delta = fpold - fp
@@ -840,6 +840,8 @@ def _add_knots(x, k, s, t, nmin, nmax,
         nplus = min(nplus*2, max(npl1, nplus//2, 1))
 
     # actually add knots
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L271-L281
+    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L288-L295
     for j in range(nplus):
         t = add_knot(x, t, k, residuals)
 
@@ -848,11 +850,16 @@ def _add_knots(x, k, s, t, nmin, nmax,
         n = t.shape[0]
         # c  if n = nmax, sinf(x) is an interpolating spline.
         # c  if n=nmax we locate the knots as for interpolation.
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L276-L279
         if n >= nmax:
+            # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L93-L109
+            # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L114-L131
             return _not_a_knot(x, k), nplus
 
         # c  if n=nest we cannot increase the number of knots because of
         # c  the storage capacity limitation.
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L280
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L294
         if n >= nest:
             return t, nplus
 
@@ -966,6 +973,8 @@ def _regrid_python_fitpack(
                                     kx, tx, x_fit, ky, ty,
                                     y_fit, Z_fit)
 
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L190
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L224
         if len(tx) == nminx and len(ty) == nminy:
             fp0 = fp
 
@@ -983,6 +992,7 @@ def _regrid_python_fitpack(
         Z0  = _Ax @ C0 @ _Ay.T
         R = Z_fit - Z0
 
+        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L265-L295
         added_x = None
         added_y = None
         if last_axis == "y":
