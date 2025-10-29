@@ -686,9 +686,26 @@ def build_matrices(x, y, z, tx, ty, kx, ky):
 
 TOL = 0.001
 
-def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
-                    nest=None, t=None, fp=None, fpold=None,
-                    residuals=None, nplus=None):
+def _initialise_knots(x, xb, xe, k, nest=None):
+    m = x.size    # the number of data points
+
+    if nest is None:
+        nest = max(m + k + 1, 2*k + 3)
+    else:
+        if nest < 2*(k + 1):
+            raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
+
+    nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
+    nmax = m + k + 1  # the number of knots for the spline interpolation
+
+    # start from no internal knots
+    t = np.asarray([xb]*(k+1) + [xe]*(k+1))
+
+    return t, nest, nmin, nmax
+
+def _add_knots(x, k, s, t, nmin, nmax,
+                    nest, fp, fpold,
+                    residuals, nplus):
     """
     Knot-growth helper for 1-D smoothing B-splines.
 
@@ -807,45 +824,9 @@ def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
       residual computation and periodic handling to the caller/higher level.
     """
 
-    if s == 0:
-        if nest is not None:
-            raise ValueError("s == 0 is interpolation only")
-        # For special-case k=1 (e.g., Lyche and Morken, Eq.(2.16)),
-        # _not_a_knot produces desired knot vector
-        return _not_a_knot(x, k), None, None, None
-
     acc = s * TOL
-    m = x.size    # the number of data points
-
-    if t is None:
-        if nest is None:
-            # the max number of knots. This is set in _fitpack_impl.py line 274
-            # and fitpack.pyf line 198
-            # Ref: https://github.com/scipy/scipy/blob/596b586e25e34bd842b575bac134b4d6924c6556/scipy/interpolate/_fitpack_impl.py#L260-L263
-            nest = max(m + k + 1, 2*k + 3)
-        else:
-            if nest < 2*(k + 1):
-                raise ValueError(f"`nest` too small: {nest = } < 2*(k+1) = {2*(k+1)}.")
-
-        nmin = 2*(k + 1)    # the number of knots for an LSQ polynomial approximation
-        nmax = m + k + 1  # the number of knots for the spline interpolation
-
-        fp = 0.0
-        fpold = 0.0
-
-        # start from no internal knots
-        t = np.asarray([xb]*(k+1) + [xe]*(k+1))
-
-        return t, nest, nmin, nmax
-
     n = t.size
-
     fpms = fp - s
-
-    # c  test whether the approximation sinf(x) is an acceptable solution.
-    # c  if f(p=inf) < s accept the choice of knots.
-    if (abs(fpms) < acc) or (fpms < 0):
-        return
 
     # ### c  increase the number of knots. ###
 
@@ -934,10 +915,13 @@ def _regrid_python_fitpack(
     yb = float(y_fit[0] if bbox[2] is None else bbox[2])
     ye = float(y_fit[-1] if bbox[3] is None else bbox[3])
 
-    tx, nestx, nminx, nmaxx = _generate_knots(x_fit, xb, xe, kx, s, nest=nestx)
-    ty, nesty, nminy, nmaxy = _generate_knots(y_fit, yb, ye, ky, s, nest=nesty)
-
     if s == 0.0:
+        if nestx is not None or nesty is not None:
+            raise ValueError("s == 0 is interpolation only")
+        # For special-case k=1 (e.g., Lyche and Morken, Eq.(2.16)),
+        # _not_a_knot produces desired knot vector
+        tx = _not_a_knot(x_fit, kx)
+        ty = _not_a_knot(y_fit, ky)
         (Ax, offset_x, nc_x,
          Ay, offset_y, nc_y,
          Drx, offset_dx, _,
@@ -950,6 +934,9 @@ def _regrid_python_fitpack(
                                     kx, tx, x_fit, ky, ty,
                                     y_fit, Z_fit)
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+
+    tx, nestx, nminx, nmaxx = _initialise_knots(x_fit, xb, xe, kx, nest=nestx)
+    ty, nesty, nminy, nmaxy = _initialise_knots(y_fit, yb, ye, ky, nest=nesty)
 
     moves = 0
     fpold = None
@@ -993,17 +980,17 @@ def _regrid_python_fitpack(
 
         _Ax = BSpline.design_matrix(x_fit, tx, kx, extrapolate=False)
         _Ay = BSpline.design_matrix(y_fit, ty, ky, extrapolate=False)
-        Z0  = (_Ax @ C0) @ _Ay.T
+        Z0  = _Ax @ C0 @ _Ay.T
         R = Z_fit - Z0
 
         added_x = None
         added_y = None
         if last_axis == "y":
             len_tx_before = len(tx)
-            tx, nplusx = _generate_knots(
-                x_fit, xb, xe, kx, s, nmin=nminx, nmax=nmaxx,
-                nest=nestx, t=tx, fp=fp, fpold=fpold,
-                residuals=np.ascontiguousarray(np.sum(R**2, 1)),
+            tx, nplusx = _add_knots(
+                x_fit, kx, s, tx, nmin=nminx, nmax=nmaxx,
+                nest=nestx, fp=fp, fpold=fpold,
+                residuals=np.sum(R**2, axis=1),
                 nplus=nplusx)
             added_x = len(tx) - len_tx_before
             if verbose:
@@ -1011,10 +998,10 @@ def _regrid_python_fitpack(
             last_axis = "x"
         else:
             len_ty_before = len(ty)
-            ty, nplusy = _generate_knots(
-                y_fit, yb, ye, ky, s, nmin=nminy, nmax=nmaxy,
-                nest=nesty, t=ty, fp=fp, fpold=fpold,
-                residuals=np.ascontiguousarray(np.sum(R**2, 0)),
+            ty, nplusy = _add_knots(
+                y_fit, ky, s, ty, nmin=nminy, nmax=nmaxy,
+                nest=nesty, fp=fp, fpold=fpold,
+                residuals=np.sum(R**2, axis=0),
                 nplus=nplusy)
             added_y = len(ty) - len_ty_before
             if verbose:
