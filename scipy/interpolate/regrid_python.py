@@ -458,6 +458,11 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
 
     # Build explicit design matrices to evaluate the fitted surface:
     # _Ax: [mx × nx_coef], _Ay: [my × ny_coef]
+    # Note: We call BSpline.design_matrix here because matrix multiplication
+    # with the packed banded format (returned by _dierckx.data_matrix)
+    # is not implemented. BSpline.design_matrix builds a full design matrix,
+    # in CSR format, that supports standard @ operations for residual
+    # evaluation and diagnostics.
     _Ax = BSpline.design_matrix(x_x, tx, kx, extrapolate=False)
     _Ay = BSpline.design_matrix(x_y, ty, ky, extrapolate=False)
 
@@ -976,6 +981,11 @@ def _regrid_python_fitpack(
         if fp < s:
             break
 
+        # Note: We call BSpline.design_matrix here because matrix multiplication
+        # with the packed banded format (returned by _dierckx.data_matrix)
+        # is not implemented. BSpline.design_matrix builds a full design matrix,
+        # in CSR format, that supports standard @ operations for residual
+        # evaluation and diagnostics.
         _Ax = BSpline.design_matrix(x_fit, tx, kx, extrapolate=False)
         _Ay = BSpline.design_matrix(y_fit, ty, ky, extrapolate=False)
         Z0  = _Ax @ C0 @ _Ay.T
