@@ -456,7 +456,7 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
         False
     )
 
-    # Build explicit (dense) design matrices to evaluate the fitted surface:
+    # Build explicit design matrices to evaluate the fitted surface:
     # _Ax: [mx × nx_coef], _Ay: [my × ny_coef]
     _Ax = BSpline.design_matrix(x_x, tx, kx, extrapolate=False)
     _Ay = BSpline.design_matrix(x_y, ty, ky, extrapolate=False)
@@ -686,9 +686,42 @@ def build_matrices(x, y, z, tx, ty, kx, ky):
 
 TOL = 0.001
 
-def _initialise_knots(x, xb, xe, k, nest=None):
-    m = x.size    # the number of data points
+def _initialise_knots(m, xb, xe, k, nest=None):
+    """
+    Initialize a non-periodic knot vector.
 
+    Parameters
+    ----------
+    m : int
+        Number of data points (equivalent to len(x) if x were provided).
+    xb, xe : float
+        Domain endpoints used to seed the initial knot vector with no internal knots.
+    k : int
+        Spline degree.
+    nest : int, optional
+        Storage cap for knots. If None, defaults to max(m + k + 1, 2*k + 3).
+        Must satisfy nest >= 2*(k + 1); otherwise a ValueError is raised.
+
+    Returns
+    -------
+    t : 1-D ndarray
+        Initial knot vector with no internal knots: [xb]*(k+1) + [xe]*(k+1).
+    nest : int
+        The finalized storage cap for knots.
+    nmin : int
+        Lower bound on knot count.
+    nmax : int
+        Upper bound on knot count.
+
+    What this does
+    --------------
+    - Computes defaults and bounds used by FITPACK-style knot growth:
+        * nest: storage cap for knots (defaults to max(m + k + 1, 2*k + 3))
+        * nmin: minimal knot count (2*(k+1))
+        * nmax: maximal knot count (m + k + 1)
+    - Returns an initial knot vector with no internal knots:
+        t = [xb]*(k+1) + [xe]*(k+1)
+    """
     if nest is None:
         nest = max(m + k + 1, 2*k + 3)
     else:
@@ -704,124 +737,80 @@ def _initialise_knots(x, xb, xe, k, nest=None):
     return t, nest, nmin, nmax
 
 def _add_knots(x, k, s, t, nmin, nmax,
-                    nest, fp, fpold,
-                    residuals, nplus):
+               nest, fp, fpold,
+               residuals, nplus):
     """
-    Knot-growth helper for 1-D smoothing B-splines.
-
-    What this function does
-    -----------------------
-    - Grows a non-periodic knot vector t iteratively for a target smoothing s,
-      following the classic FITPACK knot-augmentation heuristics (fpcurf family).
-    - Uses the same stopping rule as FITPACK: if |fp - s| < acc or fp < s
-      (with acc = s*TOL), accept current t.
-    - When more knots are needed, computes nplus (how many knots to insert next)
-      based on the previous decrease in residual (fpold - fp), then calls add_knot
-      up to nplus times.
-    - Provides special handling for s == 0 (interpolation): returns a not-a-knot
-      vector immediately.
-
-    How it compares with _fitpack_repro.py::_generate_knots_impl
-    -------------------------------------------------------------
-
-    Similarities:
-      1) Same growth logic and thresholds:
-         - acc = s*TOL
-         - Accept if |fp - s| < acc or fp < s
-         - nplus update rule derived from delta = fpold - fp, with doubling/halving caps
-      2) Same bounds for non-periodic splines:
-         - nmin = 2*(k+1)  (LSQ polynomial stage)
-         - nmax = m + k + 1 (interpolating spline)
-      3) Same storage guard:
-         - If nest is too small (< 2*(k+1)), raise; if n hits nest, stop and return t
-      4) Same end behavior at the "interpolating" cap:
-         - When n >= nmax, switch to an interpolation-layout knot
-           vector (here: not-a-knot)
-
-    Differences:
-      1) API style:
-         - _generate_knots_impl is a generator that YIELDS a sequence of trial knot
-           vectors (t) on each iteration and internally recomputes residuals/fp.
-         - This function is a stateful helper that RETURNS updated values and expects
-           the caller to manage the loop, residuals, fp, and fpold between calls.
-             * First call: pass t=None to initialize; returns (t, nest, nmin, nmax)
-             * Subsequent calls: pass updated fp, fpold, residuals, nplus, and current t
-               to either accept, grow knots, or stop.
-      2) Periodicity:
-         - _generate_knots_impl supports periodic=True (with per = xe - xb, periodic
-           wrapping of boundary knots, and periodic-specific acceptance checks).
-         - This function is non-periodic only (no periodic branch, no per, no periodic
-           boundary updates). It uses not-a-knot when reaching nmax.
-      3) Residual computation:
-         - _generate_knots_impl calls an internal
-           _get_residuals(x, y, t, k, w, periodic) each iteration and
-           yields after setting fp and residuals.
-         - This function does NOT compute residuals/fp. The caller must compute them
-           externally and pass:
-             * residuals: from the last solve with current t
-             * fp: current sum of squared residuals
-             * fpold: previous fp (for nplus update)
-      4) Return values:
-         - _generate_knots_impl yields t multiple times and eventually returns None.
-         - This function returns different tuples depending on phase:
-             * Initialization (t is None): (t, nest, nmin, nmax)
-             * Acceptance (|fp - s| < acc or fp < s): returns None (caller stops)
-             * Growth step: (t, nplus)
-             * Early stop due to n >= nmax or n >= nest: (t, nplus) or (t,) as coded
+    Knot-growth helper for knot-finding loop (non-periodic).
 
     Parameters
     ----------
     x : 1-D ndarray
         Strictly increasing sample coordinates.
-    xb, xe : float
-        Domain endpoints used to seed the initial no-internal-knots vector.
     k : int
         Spline degree.
     s : float
-        Smoothing target (> 0 for smoothing; if s == 0, do pure interpolation).
-    nmin, nmax : int, optional
-        Lower/upper bounds on knot count. If t is None, these are derived as:
-          nmin = 2*(k+1), nmax = m + k + 1 (m = x.size).
-    nest : int, optional
-        Storage cap for knots. If t is None and nest is None, it defaults to
-        max(m + k + 1, 2*k + 3). Must satisfy nest >= 2*(k+1).
-    t : 1-D ndarray, optional
-        Current knot vector. If None, the function initializes t as
-        [xb]*(k+1) + [xe]*(k+1).
-    fp, fpold : float, optional
-        Current and previous residual sums of squares (needed after initialization).
-    residuals : 1-D ndarray, optional
-        Most recent residual signal used by add_knot to place the next knot.
-    nplus : int, optional
-        Previous iteration's proposed number of knots to add (used in nplus update).
+        Target smoothing.
+    t : 1-D ndarray
+        Current knot vector to be grown.
+    nmin, nmax : int
+        Lower/upper bounds on knot count (from initialisation).
+    nest : int
+        Storage cap for total knots.
+    fp, fpold : float
+        Current and previous residual sums of squares. Used to update nplus.
+    residuals : 1-D ndarray
+        Most recent residual signal used by `add_knot` to decide placement.
+    nplus : int
+        Previous iteration's proposed number of knots; used to update the next nplus.
 
     Returns
     -------
-    On first call (t is None):
-        t, nest, nmin, nmax
-            Initialized knot vector and derived limits.
-    On acceptance (|fp - s| < acc or fp < s):
-        None
-            Caller should stop; current t is acceptable.
-    On growth step:
-        t, nplus
-            Updated knot vector after inserting up to nplus knots;
-            also the nplus chosen.
-    On early stop due to n >= nmax or n >= nest:
-        t, nplus   (or just t depending on branch)
-            Final knot vector respecting the cap.
+    t_new, nplus : tuple
+        Updated knot vector and the nplus chosen for this step.
+        If n >= nmax, t_new is a not-a-knot layout. If n >= nest, t_new is the
+        current vector respecting the storage cap.
 
-    Notes
-    -----
-    - Use this as a building block in an outer loop:
-        1) Call with t=None to initialize (and receive nest, nmin, nmax).
-        2) Fit/evaluate to compute fp and residuals for current t.
-        3) Call again with updated fp, fpold, residuals to either accept, or
-           get back an updated t (and nplus) to continue.
-    - For s == 0, this routine returns a not-a-knot vector immediately and
-      expects the caller to perform interpolation.
-    - This helper mirrors FITPACK's growth heuristics but intentionally leaves
-      residual computation and periodic handling to the caller/higher level.
+    What this function does
+    -----------------------
+    - Assumes the caller has already decided to GROW (i.e., checks
+      like |fp - s| < acc or fp < s has FAILED).
+    - Updates nplus (how many knots to add next) using the FITPACK heuristic
+      based on the previous improvement (delta = fpold - fp).
+    - Inserts up to nplus new internal knots using `add_knot(x, t, k, residuals)`.
+    - Stops early if storage or interpolation caps are reached:
+        * if n >= nmax: switch to interpolation layout (not-a-knot) and return
+        * if n >= nest: return current t respecting storage cap
+
+    How it compares with _fitpack_repro.py::_generate_knots_impl
+    -------------------------------------------------------------
+    Similarities:
+      1) Same growth logic for nplus:
+         - Use delta = fpold - fp with ratio fpms/delta
+         - Apply min/max caps (doubling and halving behavior)
+      3) Same storage guard:
+         - If n reaches nest, stop and return current t
+      4) Same end behavior at the "interpolating" cap:
+         - When n >= nmax, switch to not-a-knot layout and return
+
+    Differences:
+      1) API style:
+         - _generate_knots_impl is a generator that yields trial knot vectors and
+           recomputes residuals/fp internally on each iteration.
+         - `_add_knots` is a stateful helper that only grows knots; it expects the
+           caller to handle residual computation and fp/fpold updates between calls.
+      2) Periodicity:
+         - _generate_knots_impl supports periodic=True.
+         - `_add_knots` is non-periodic only; it uses not-a-knot when n >= nmax.
+      3) Residual computation:
+         - _generate_knots_impl calls an internal residual routine each iteration.
+         - `_add_knots` does not compute residuals; the caller must supply:
+             residuals (used by add_knot), fp, fpold.
+      4) Return values:
+         - _generate_knots_impl yields multiple t's and eventually returns None.
+         - `_add_knots` returns:
+             * (t_new, nplus) after inserting knots,
+             * (not_a_knot_t, nplus) if n >= nmax,
+             * (t, nplus) if n >= nest (storage cap).
     """
 
     acc = s * TOL
@@ -942,8 +931,8 @@ def _regrid_python_fitpack(
                                     y_fit, Z_fit)
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
-    tx, nestx, nminx, nmaxx = _initialise_knots(x_fit, xb, xe, kx, nest=nestx)
-    ty, nesty, nminy, nmaxy = _initialise_knots(y_fit, yb, ye, ky, nest=nesty)
+    tx, nestx, nminx, nmaxx = _initialise_knots(x_fit.size, xb, xe, kx, nest=nestx)
+    ty, nesty, nminy, nmaxy = _initialise_knots(y_fit.size, yb, ye, ky, nest=nesty)
 
     moves = 0
     fpold = None
