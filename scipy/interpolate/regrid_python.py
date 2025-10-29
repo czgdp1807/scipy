@@ -812,8 +812,7 @@ def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
             raise ValueError("s == 0 is interpolation only")
         # For special-case k=1 (e.g., Lyche and Morken, Eq.(2.16)),
         # _not_a_knot produces desired knot vector
-        t = _not_a_knot(x, k)
-        return np.asarray(t), None, None, None
+        return _not_a_knot(x, k), None, None, None
 
     acc = s * TOL
     m = x.size    # the number of data points
@@ -869,15 +868,14 @@ def _generate_knots(x, xb, xe, k, s, nmin=None, nmax=None,
         # c  if n = nmax, sinf(x) is an interpolating spline.
         # c  if n=nmax we locate the knots as for interpolation.
         if n >= nmax:
-            t = _not_a_knot(x, k)
-            return np.asarray(t), nplus
+            return _not_a_knot(x, k), nplus
 
         # c  if n=nest we cannot increase the number of knots because of
         # c  the storage capacity limitation.
         if n >= nest:
-            return np.asarray(t), nplus
+            return t, nplus
 
-    return np.asarray(t), nplus
+    return t, nplus
 
 def _regrid_python_fitpack(
     x, y, Z, *, kx=3, ky=3, s=0.0,
@@ -939,6 +937,20 @@ def _regrid_python_fitpack(
     tx, nestx, nminx, nmaxx = _generate_knots(x_fit, xb, xe, kx, s, nest=nestx)
     ty, nesty, nminy, nmaxy = _generate_knots(y_fit, yb, ye, ky, s, nest=nesty)
 
+    if s == 0.0:
+        (Ax, offset_x, nc_x,
+         Ay, offset_y, nc_y,
+         Drx, offset_dx, _,
+         Dry, offset_dy, _, Q) = build_matrices(
+             x_fit, y_fit, Z, tx, ty, kx, ky)
+        C0, fp  = _solve_2d_fitpack(Ax, offset_x, nc_x,
+                                    Drx, offset_dx,
+                                    Ay, offset_y, nc_y, Q,
+                                    Dry, offset_dy, -1,
+                                    kx, tx, x_fit, ky, ty,
+                                    y_fit, Z_fit)
+        return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+
     moves = 0
     fpold = None
     last_axis = "y"
@@ -975,11 +987,6 @@ def _regrid_python_fitpack(
                   f"nx={nx} ny={ny} moves={moves}/{mpm}")
             print(f"    headroom: mx_head={mx_head} my_head={my_head} "
                   f"(nestx={nestx}, nesty={nesty})")
-
-        if s == 0.0:
-            if verbose:
-                print(f"  Target reached at it={it} (fp = {fp} <= s = {s})")
-            return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
         if fp < s:
             break
