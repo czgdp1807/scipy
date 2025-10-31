@@ -218,8 +218,37 @@ def return_NdBSpline(fp, tck, degrees):
     c = tck[2].reshape(nx - kx - 1, ny - ky - 1)
     return NdBSpline((tck[0], tck[1]), c, degrees)
 
+class PackedMatrix:
+    """A simplified CSR format for when non-zeros in each row are consecutive.
 
-def _stack_augmented_fitpack(A, offs_a, D, offs_d, nc, k, p):
+    Assuming that each row of an `(m, nc)` matrix 1) only has `nz` non-zeros, and
+    2) these non-zeros are consecutive, we only store an `(m, nz)` matrix of
+    non-zeros and a 1D array of row offsets. This way, a row `i` of the original
+    matrix A is ``A[i, offset[i]: offset[i] + nz]``.
+
+    """
+    def __init__(self, a, offset, nc):
+        self.a = a
+        self.offset = offset
+        self.nc = nc
+
+        assert a.ndim == 2
+        assert offset.ndim == 1
+        assert a.shape[0] == offset.shape[0]
+
+    @property
+    def shape(self):
+        return self.a.shape[0], self.nc
+
+    def todense(self):
+        out = np.zeros(self.shape)
+        nelem = self.a.shape[1]
+        for i in range(out.shape[0]):
+            nel = min(self.nc - self.offset[i], nelem)
+            out[i, self.offset[i]:self.offset[i] + nel] = self.a[i, :nel]
+        return out
+
+def _stack_augmented_fitpack(A, D, nc, k, p):
     """
     Stack data and smoothing-penalty rows for banded QR, using 1/p weighting.
 
@@ -263,20 +292,18 @@ def _stack_augmented_fitpack(A, offs_a, D, offs_d, nc, k, p):
     infinite `p` (interpolation, no smoothing penalty).
     """
     if p == -1:
-        return A, offs_a, nc
+        return A.a, A.offset, nc
 
     nz = k + 1
-    AA = np.zeros((nc + D.shape[0], k+2), dtype=float)
-    AA[:nc, :nz] = A[:nc, :]
-    AA[nc:, :] = D / p
-    offset = np.r_[offs_a, offs_d]
+    AA = np.zeros((nc + D.shape[0], k + 2), dtype=float)
+    AA[:nc, :nz] = A.a[:nc, :]
+    AA[nc:, :] = D.a / p
+    offset = np.r_[A.offset, D.offset]
     return AA, offset, nc
 
 
-def _solve_2d_fitpack(Ax, offs_x, ncx,
-                      Dx, offs_dx,
-                      Ay, offs_y, ncy, Q,
-                      Dy, offs_dy, p,
+def _solve_2d_fitpack(Ax, Dx, Ay,
+                      Dy, Q, p,
                       kx, tx, x_x,
                       ky, ty, x_y, z):
     """
@@ -396,11 +423,11 @@ def _solve_2d_fitpack(Ax, offs_x, ncx,
     #   offset_aug_x: band offsets compatible with Ax_aug.
     #   nc_augx     : number of top data rows within Ax_aug (== ncx).
     Ax_aug, offset_aug_x, nc_augx = _stack_augmented_fitpack(
-        Ax, offs_x, Dx, offs_dx, ncx, kx, p)
+        Ax, Dx, Ax.nc, kx, p)
 
     # Same for y: build Ay_aug with (Dy / p) stacked if p != -1.
     Ay_aug, offset_aug_y, nc_augy = _stack_augmented_fitpack(
-        Ay, offs_y, Dy, offs_dy, ncy, ky, p)
+        Ay, Dy, Ay.nc, ky, p)
 
     # If we stacked penalty rows on the x side, the RHS must be padded with zeros
     # to match the augmented row count for the QR reduction call.
@@ -519,23 +546,14 @@ class F:
     Intended for use by `_p_search_hit_s` to iteratively evaluate `fp(p)`.
     """
 
-    def __init__(self, Ax, offs_x, ncx,
-                 Dx, offs_dx, Ay,
-                 offs_y, ncy, Q, Dy,
-                 offs_dy, kx,
-                 tx, x_x, ky, ty,
+    def __init__(self, Ax, Dx, Ay, Dy, Q,
+                 kx, tx, x_x, ky, ty,
                  x_y, z):
         self.Ax = Ax
-        self.offs_x = offs_x
-        self.ncx = ncx
         self.Dx = Dx
-        self.offs_dx = offs_dx
         self.Ay = Ay
-        self.offs_y = offs_y
-        self.ncy = ncy
-        self.Q = Q
         self.Dy = Dy
-        self.offs_dy = offs_dy
+        self.Q = Q
         self.kx = kx
         self.tx = tx
         self.x_x = x_x
@@ -545,11 +563,16 @@ class F:
         self.z = z
 
     def __call__(self, p):
+        Ax_copy = PackedMatrix(
+            self.Ax.a.copy(), self.Ax.offset.copy(), self.Ax.nc)
+        Dx_copy = PackedMatrix(
+            self.Dx.a.copy(), self.Dx.offset.copy(), self.Dx.nc)
+        Ay_copy = PackedMatrix(
+            self.Ay.a.copy(), self.Ay.offset.copy(), self.Ay.nc)
+        Dy_copy = PackedMatrix(
+            self.Dy.a.copy(), self.Dy.offset.copy(), self.Dy.nc)
         C, fp = _solve_2d_fitpack(
-            self.Ax.copy(), self.offs_x.copy(), self.ncx,
-            self.Dx.copy(), self.offs_dx.copy(),
-            self.Ay.copy(), self.offs_y.copy(), self.ncy,
-            self.Q.copy(), self.Dy.copy(), self.offs_dy.copy(),
+            Ax_copy, Dx_copy, Ay_copy, Dy_copy, self.Q.copy(),
             p, self.kx, self.tx, self.x_x,
             self.ky, self.ty, self.x_y, self.z)
         self.C = C
@@ -558,8 +581,7 @@ class F:
 
 # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L301-L367
 def _p_search_hit_s(
-    Ax, offs_x, ncx, Dx, offs_dx, Ay,
-    offs_y, ncy, Q, Dy, offs_dy, kx,
+    Ax, Dx, Ay, Dy, Q, kx,
     tx, x_x, ky, ty, x_y, z, s, fp0, *,
     p_init=1.0, tol_rel=1e-3, maxit=40):
     """
@@ -611,8 +633,7 @@ def _p_search_hit_s(
     until the residual `fp(p)` matches the target `s` within tolerance.
     """
 
-    fp_at = F(Ax, offs_x, ncx, Dx, offs_dx, Ay,
-              offs_y, ncy, Q, Dy, offs_dy, kx,
+    fp_at = F(Ax, Dx, Ay, Dy, Q, kx,
               tx, x_x, ky, ty, x_y, z)
 
     def g(p):
@@ -669,21 +690,27 @@ def _apply_bbox_grid(x, y, Z, bbox):
 
     return x[ix], y[iy], Z[np.ix_(ix, iy)], np.s_[ix], np.s_[iy]
 
-def build_matrices(x, y, z, tx, ty, kx, ky):
+def build_matrices(x, y, z, tx, ty, kx, ky, p):
 
     w_x = np.ones_like(x)
     w_y = np.ones_like(y)
 
     Ax, offset_x, nc_x = _dierckx.data_matrix(x, tx, kx, w_x)
     Ay, offset_y, nc_y = _dierckx.data_matrix(y, ty, ky, w_y)
-    Drx, offset_dx, nc_dx = disc(tx, kx)
-    Dry, offset_dy, nc_dy = disc(ty, ky)
     Q = z.copy()
 
-    return (Ax, offset_x, nc_x,
-            Ay, offset_y, nc_y,
-            Drx, offset_dx, nc_dx,
-            Dry, offset_dy, nc_dy, Q)
+    if p == -1:
+        return (PackedMatrix(Ax, offset_x, nc_x),
+                PackedMatrix(Ay, offset_y, nc_y),
+                None, None, Q)
+
+    Drx, offset_dx, nc_dx = disc(tx, kx)
+    Dry, offset_dy, nc_dy = disc(ty, ky)
+
+    return (PackedMatrix(Ax, offset_x, nc_x),
+            PackedMatrix(Ay, offset_y, nc_y),
+            PackedMatrix(Drx, offset_dx, nc_dx),
+            PackedMatrix(Dry, offset_dy, nc_dy), Q)
 
 TOL = 0.001
 
@@ -910,6 +937,8 @@ def _regrid_python_fitpack(
     yb = float(y_fit[0] if bbox[2] is None else bbox[2])
     ye = float(y_fit[-1] if bbox[3] is None else bbox[3])
 
+    p = -1
+
     if s == 0.0:
         if nestx is not None or nesty is not None:
             raise ValueError("s == 0 is interpolation only")
@@ -917,15 +946,9 @@ def _regrid_python_fitpack(
         # _not_a_knot produces desired knot vector
         tx = _not_a_knot(x_fit, kx)
         ty = _not_a_knot(y_fit, ky)
-        (Ax, offset_x, nc_x,
-         Ay, offset_y, nc_y,
-         Drx, offset_dx, _,
-         Dry, offset_dy, _, Q) = build_matrices(
-             x_fit, y_fit, Z, tx, ty, kx, ky)
-        C0, fp  = _solve_2d_fitpack(Ax, offset_x, nc_x,
-                                    Drx, offset_dx,
-                                    Ay, offset_y, nc_y, Q,
-                                    Dry, offset_dy, -1,
+        (Ax, Ay, Drx, Dry, Q) = build_matrices(
+             x_fit, y_fit, Z, tx, ty, kx, ky, p)
+        C0, fp  = _solve_2d_fitpack(Ax, Drx, Ay, Dry, Q, p,
                                     kx, tx, x_fit, ky, ty,
                                     y_fit, Z_fit)
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
@@ -943,15 +966,9 @@ def _regrid_python_fitpack(
     # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
     for _ in range(mpm):
 
-        (Ax, offset_x, nc_x,
-         Ay, offset_y, nc_y,
-         Drx, offset_dx, _,
-         Dry, offset_dy, _, Q) = build_matrices(
-             x_fit, y_fit, Z, tx, ty, kx, ky)
-        C0, fp  = _solve_2d_fitpack(Ax, offset_x, nc_x,
-                                    Drx, offset_dx,
-                                    Ay, offset_y, nc_y, Q,
-                                    Dry, offset_dy, -1,
+        (Ax, Ay, Drx, Dry, Q) = build_matrices(
+             x_fit, y_fit, Z, tx, ty, kx, ky, p)
+        C0, fp  = _solve_2d_fitpack(Ax, Drx, Ay, Dry, Q, p,
                                     kx, tx, x_fit, ky, ty,
                                     y_fit, Z_fit)
 
@@ -991,22 +1008,17 @@ def _regrid_python_fitpack(
 
         fpold = fp
 
-    if len(tx) != nminx or len(ty) != nminy:
-        (Ax, offset_x, nc_x,
-        Ay, offset_y, nc_y,
-        Drx, offset_dx, _,
-        Dry, offset_dy, _, Q) = build_matrices(
-            x_fit, y_fit, Z, tx, ty, kx, ky)
-        _, C_sm, fp_sm = _p_search_hit_s(Ax, offset_x, nc_x,
-                                        Drx, offset_dx,
-                                        Ay, offset_y, nc_y, Q,
-                                        Dry, offset_dy,
-                                        kx, tx, x_fit, ky,
-                                        ty, y_fit,
-                                        Z_fit, s, fp0, maxit=maxit)
-        return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
-    else:
+    if len(tx) == nminx and len(ty) == nminy:
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
+
+    p = 1
+    (Ax, Ay, Drx, Dry, Q) = build_matrices(
+        x_fit, y_fit, Z, tx, ty, kx, ky, p)
+    _, C_sm, fp_sm = _p_search_hit_s(Ax, Drx, Ay, Dry, Q,
+                                     kx, tx, x_fit, ky,
+                                     ty, y_fit, Z_fit, s,
+                                     fp0, maxit=maxit, p_init=p)
+    return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
 
 
 def regrid_python(x, y, Z, *,
