@@ -79,33 +79,74 @@ as FITPACK, but without relying on the single monolithic REGRID entry point.
 
 5) Execution flow (who calls whom)
 ----------------------------------
-1. **`regrid_python`**
-   - Validates inputs (strictly increasing `x`, `y`; grid shape; `s >= 0`),
-     normalizes `bbox`,
-   - Delegates to `_regrid_python_fitpack`.
 
-2. **`_regrid_python_fitpack`**
-   - Applies `bbox` -> `(x_fit, y_fit, Z_fit)`.
-   - Initializes clamped knots using `_generate_knots`:
-     - if `s == 0`: interpolatory setup (no internal knots),
-     - else: open-uniform ends without interior knots.
-   - **Loop:**
-     - Build 1-D banded matrices via `build_matrices` (`data_matrix`, `disc`).
-     - Call `_solve_2d_fitpack` with `p = ∞` (sentinel `-1`) on the current knots.
-     - If `s == 0`: return; else if `fp < s`: break; else compute residuals,
-       decide new knots with `_generate_knots` (x and y alternate), and continue.
-   - If the loop ends with `fp > s`, call `_p_search_hit_s` to tune `p`
-     to achieve `fp(p) ~ s`, and return the resulting `NdBSpline`.
+**Top-level**
+1. `regrid_python`
+   - Validates shapes/monotonicity and normalizes `bbox`.
+   - Dispatches to `_regrid_python_fitpack(...)`.
 
-3. **`_p_search_hit_s`**
-   - Wraps the problem in `F` (maps `p` -> `fp(p)` by invoking `_solve_2d_fitpack`).
-   - Uses `root_rati` to find `p*` with `fp(p*) ~ s`, caching `C`.
+**Core driver**
+2. `_regrid_python_fitpack`
+   - Clips inputs to `bbox` via `_apply_bbox_grid` -> `(x_fit, y_fit, Z_fit)`.
+   - If `s == 0` (interpolation path):
+     - Build initial not-a-knot vectors: `tx = _not_a_knot(x_fit, kx)`,
+       `ty = _not_a_knot(y_fit, ky)`.
+     - Build design matrices: `(Ax, Ay, Q) = build_design_matrices(...)`.
+     - Solve once at `p = -1` (inf): `C0, fp = _solve_2d_fitpack(...)`.
+     - Return `return_NdBSpline(...)`.
+   - Else (`s > 0`, smoothing with adaptive knots):
+     - Initialize clamped no-interior-knot vectors with
+       `_initialise_knots` (for x and y).
+     - **Knot-growth loop** (up to `len(x_fit)+len(y_fit)` iterations):
+       1) Build design matrices: `(Ax, Ay, Q) = build_design_matrices(...)`.
+       2) Interpolatory reference solve (`p = -1`): `C0, fp = _solve_2d_fitpack(...)`.
+       3) If both `tx`, `ty` are at minimal size, record `fp0 = fp`
+          (used to bracket the p-search).
+       4) If `fp < s`: **stop growth** and proceed to p-search / finalize.
+       5) Compute residuals for knot insertion:
+          - Convert packed to CSR once per axis for evaluation:
+            `_Ax = Ax.tocsr(...)`, `_Ay = Ay.tocsr(...)`
+          - Evaluate `Z0 = _Ax @ C0 @ _Ay.T`, residual `R = Z_fit - Z0`.
+       6) Insert knots on alternating axes using energy heuristics:
+          - If last axis was `y`, grow `tx` with
+            `_add_knots(..., residuals=np.sum(R**2, axis=1), ...)`.
+          - Else, grow `ty` with `_add_knots(..., residuals=np.sum(R**2, axis=0), ...)`.
+          - Update `fpold`, `nplus{ x|y }`, `last_axis`.
+     - If growth ended with both axes still minimal: return `return_NdBSpline(...)`.
+     - **Finite-p smoothing (if needed):**
+       - Build 1-D penalty operators: `(Drx, _, ncx) = disc(tx, kx)`,
+         `(Dry, _, ncy) = disc(ty, ky)`, wrap as `PackedMatrix`.
+       - Rebuild design matrices on the final `(tx, ty)`.
+       - Run `_p_search_hit_s(...)` to find `p*` such that `fp(p*) ~ s`:
+         - Internally constructs `F(...)` which evaluates `fp(p)`
+           by calling `_solve_2d_fitpack(...)`.
+         - Uses `root_rati` on `g(p) = fp(p) - s` with the interpolatory
+           reference at `p = inf` and `fp0` bracket.
+       - Return `return_NdBSpline(...)`.
 
-4. **`_solve_2d_fitpack`**
-   - Performs the two separable 1-D augmented QR solves (`[A; D/p]`) along x then y,
-     evaluates `fp`, and returns `(C, fp)`.
+**Separable solver (used by both interpolation and p-search)**
+3. `_solve_2d_fitpack`
+   - Forms augmented banded systems via `_stack_augmented_fitpack`:
+     - X-side: `Ax_aug = [Ax; Dx/p]` if `p != -1`, else just `Ax`.
+     - Y-side: `Ay_aug = [Ay; Dy/p]` if `p != -1`, else just `Ay`.
+     - Pads RHS `Q` with zeros when penalties are stacked.
+   - **Stage X**: `_dierckx.qr_reduce(Ax_aug, ...)` then
+     `_dierckx.fpback(...)` -> intermediate `T`.
+   - Transpose `T` to feed Y solves column-wise; pad if needed.
+   - **Stage Y**: `_dierckx.qr_reduce(Ay_aug, ...)` then
+     `_dierckx.fpback(...)` -> coefficients `C`.
+   - Build CSR design matrices once: `_Ax = Ax.tocsr(...)`, `_Ay = Ay.tocsr(...)`.
+   - Evaluate `zhat = _Ax @ C.T @ _Ay.T`, compute `fp = ||Z_fit - zhat||^2`.
+   - Return `C.T` (in `(nx_coef, ny_coef)` layout) and `fp`.
 
-The final `(tx, ty, C)` are packaged as an `NdBSpline` for convenient evaluation.
+**Helpers**
+- `_apply_bbox_grid(...)` - slices to `(x_fit, y_fit, Z_fit)`.
+- `build_design_matrices(...)` - wraps `_dierckx.data_matrix` and
+  returns `PackedMatrix` wrappers + `Q`.
+- `_initialise_knots(...)`, `_add_knots(...)` - FITPACK-style knot bookkeeping/growth.
+- `disc(...)` - 1-D roughness operators (packed band form).
+- `F` + `root_rati` - maps `p -> fp(p)` and finds `p*` with `fp(p*) ~ s`.
+- `return_NdBSpline(...)` - packs `(tx, ty, C)` into an `NdBSpline`.
 """
 import numpy as np
 from scipy.interpolate import NdBSpline
@@ -250,6 +291,7 @@ class PackedMatrix:
         return out
 
     def tocsr(self, k, m, len_t):
+        # Inlined from https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/_bsplines.py#L455-L466
         data = self.a.ravel()
 
         # Convert from per-row offsets to the CSR indices/indptr format
@@ -267,19 +309,15 @@ class PackedMatrix:
 
 def _stack_augmented_fitpack(A, D, nc, k, p):
     """
-    Stack data and smoothing-penalty rows for banded QR, using 1/p weighting.
+    Builds augmented banded matrix.
 
     Parameters
     ----------
-    A : ndarray, shape (m, bw_a)
+    A : PackedMatrix
         Banded data/design matrix for one axis (from `_dierckx.data_matrix`).
-    offs_a : ndarray
-        Row-wise band offsets for `A`.
-    D : ndarray, shape (r, bw_d)
+    D : PackedMatrix
         Banded roughness (difference) penalty matrix for the same axis
         (from `disc`).
-    offs_d : ndarray
-        Row-wise band offsets for `D`.
     nc : int
         Number of top (data) rows from `A` to include.
     k : int
@@ -298,15 +336,6 @@ def _stack_augmented_fitpack(A, D, nc, k, p):
         Concatenated band offsets for the augmented matrix.
     nc : int
         Returned unchanged for downstream convenience.
-
-    Notes
-    -----
-    This formulation follows the FITPACK convention where the smoothing equation
-
-        min ||A c - z||^2 + (1/p) ||D c||^2
-
-    is implemented via stacking `D / p` beneath `A`. Setting `p = -1` signals
-    infinite `p` (interpolation, no smoothing penalty).
     """
     if p == -1:
         return A.a.copy(), A.offset.copy(), nc
@@ -386,18 +415,8 @@ def _solve_2d_fitpack(Ax, Ay, Q, p,
 
     Parameters
     ----------
-    Ax, Ay : ndarray
+    Ax, Ay : PackedMatrix
         Banded data matrices for the x and y axes.
-    offs_x, offs_y : ndarray
-        Band offsets for `Ax` and `Ay`.
-    ncx, ncy : int
-        Number of top (data) rows in `Ax` and `Ay`.
-    Dx, Dy : ndarray
-        Banded roughness penalty matrices for x and y.
-    offs_dx, offs_dy : ndarray
-        Band offsets for `Dx` and `Dy`.
-    ncdx, ncdy : int
-        Penalty matrix row counts (from `disc`), informational only.
     Q : ndarray, shape (mx, my)
         RHS data grid (copied from `Z`).
     p : float
@@ -411,6 +430,9 @@ def _solve_2d_fitpack(Ax, Ay, Q, p,
         Sample coordinates.
     z : ndarray
         Original data grid for residual evaluation.
+    Dx, Dy : ndarray
+        Banded roughness penalty matrices for x and y.
+        Optional, Only needed when ``p != -1``.
 
     Returns
     -------
@@ -501,9 +523,9 @@ def _solve_2d_fitpack(Ax, Ay, Q, p,
 
     # Build explicit design matrices to evaluate the fitted surface:
     # _Ax: [mx × nx_coef], _Ay: [my × ny_coef]
-    # Note: We call BSpline.design_matrix here because matrix multiplication
+    # Note: We call PackedMatrix.tocsr here because matrix multiplication
     # with the packed banded format (returned by _dierckx.data_matrix)
-    # is not implemented. BSpline.design_matrix builds a full design matrix,
+    # is not implemented. PackedMatrix.tocsr returns the design matrix,
     # in CSR format, that supports standard @ operations for residual
     # evaluation and diagnostics.
     _Ax = Ax.tocsr(kx, x_x.shape[0], len(tx))
@@ -525,18 +547,10 @@ class F:
 
     Parameters
     ----------
-    Ax, Ay : ndarray
+    Ax, Ay : PackedMatrix
         Banded data matrices.
-    offs_x, offs_y : ndarray
-        Band offsets for the data matrices.
-    ncx, ncy : int
-        Number of data rows in `Ax` and `Ay`.
-    Dx, Dy : ndarray
+    Dx, Dy : PackedMatrix
         Banded penalty matrices.
-    offs_dx, offs_dy : ndarray
-        Band offsets for the penalty matrices.
-    ncdx, ncdy : int
-        Penalty matrix row counts.
     kx, ky : int
         Degrees along x and y.
     tx, ty : ndarray
@@ -606,9 +620,10 @@ def _p_search_hit_s(
 
     Parameters
     ----------
-    Ax, Ay, Dx, Dy, offs_x, offs_y, offs_dx,
-    offs_dy, ncx, ncy, ncdx, ncdy :
-        See `_solve_2d_fitpack`.
+    Ax, Ay : PackedMatrix
+        Banded data matrices.
+    Dx, Dy : PackedMatrix
+        Banded penalty matrices.
     Q : ndarray
         RHS data grid (copy of `Z`).
     kx, ky : int
@@ -707,7 +722,7 @@ def _apply_bbox_grid(x, y, Z, bbox):
 
     return x[ix], y[iy], Z[np.ix_(ix, iy)], np.s_[ix], np.s_[iy]
 
-def build_design_matrices(x, y, z, tx, ty, kx, ky):
+def _build_design_matrices(x, y, z, tx, ty, kx, ky):
 
     w_x = np.ones_like(x)
     w_y = np.ones_like(y)
@@ -954,7 +969,7 @@ def _regrid_python_fitpack(
         # _not_a_knot produces desired knot vector
         tx = _not_a_knot(x_fit, kx)
         ty = _not_a_knot(y_fit, ky)
-        (Ax, Ay, Q) = build_design_matrices(
+        (Ax, Ay, Q) = _build_design_matrices(
              x_fit, y_fit, Z, tx, ty, kx, ky)
         C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
                                     kx, tx, x_fit, ky, ty,
@@ -974,7 +989,7 @@ def _regrid_python_fitpack(
     # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
     for _ in range(mpm):
 
-        (Ax, Ay, Q) = build_design_matrices(
+        (Ax, Ay, Q) = _build_design_matrices(
              x_fit, y_fit, Z, tx, ty, kx, ky)
         C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
                                     kx, tx, x_fit,
@@ -989,9 +1004,9 @@ def _regrid_python_fitpack(
         if fp < s:
             break
 
-        # Note: We call BSpline.design_matrix here because matrix multiplication
+        # Note: We call PackedMatrix.tocsr here because matrix multiplication
         # with the packed banded format (returned by _dierckx.data_matrix)
-        # is not implemented. BSpline.design_matrix builds a full design matrix,
+        # is not implemented. PackedMatrix.tocsr returns the design matrix,
         # in CSR format, that supports standard @ operations for residual
         # evaluation and diagnostics.
         _Ax = Ax.tocsr(kx, x_fit.shape[0], len(tx))
@@ -1027,7 +1042,7 @@ def _regrid_python_fitpack(
     Dry, offset_dy, nc_dy = disc(ty, ky)
     Drx = PackedMatrix(Drx, offset_dx, nc_dx)
     Dry = PackedMatrix(Dry, offset_dy, nc_dy)
-    (Ax, Ay, Q) = build_design_matrices(
+    (Ax, Ay, Q) = _build_design_matrices(
         x_fit, y_fit, Z, tx, ty, kx, ky)
     _, C_sm, fp_sm = _p_search_hit_s(Ax, Drx, Ay, Dry, Q,
                                      kx, tx, x_fit, ky,
