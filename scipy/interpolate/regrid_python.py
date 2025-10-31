@@ -317,10 +317,10 @@ def _packed_to_csr(data, offsets, k, m, len_t):
         shape=(m, len_t - k - 1)
     )
 
-def _solve_2d_fitpack(Ax, Dx, Ay,
-                      Dy, Q, p,
+def _solve_2d_fitpack(Ax, Ay, Q, p,
                       kx, tx, x_x,
-                      ky, ty, x_y, z):
+                      ky, ty, x_y, z,
+                      Dx=None, Dy=None):
     """
     Solve the 2-D tensor-product spline system using separable banded QR.
 
@@ -587,9 +587,10 @@ class F:
         Dy_copy = PackedMatrix(
             self.Dy.a.copy(), self.Dy.offset.copy(), self.Dy.nc)
         C, fp = _solve_2d_fitpack(
-            Ax_copy, Dx_copy, Ay_copy, Dy_copy, self.Q.copy(),
+            Ax_copy, Ay_copy, self.Q.copy(),
             p, self.kx, self.tx, self.x_x,
-            self.ky, self.ty, self.x_y, self.z)
+            self.ky, self.ty, self.x_y, self.z,
+            Dx=Dx_copy, Dy=Dy_copy)
         self.C = C
         self.fp = fp
         return fp
@@ -705,7 +706,7 @@ def _apply_bbox_grid(x, y, Z, bbox):
 
     return x[ix], y[iy], Z[np.ix_(ix, iy)], np.s_[ix], np.s_[iy]
 
-def build_matrices(x, y, z, tx, ty, kx, ky, p):
+def build_design_matrices(x, y, z, tx, ty, kx, ky):
 
     w_x = np.ones_like(x)
     w_y = np.ones_like(y)
@@ -714,18 +715,9 @@ def build_matrices(x, y, z, tx, ty, kx, ky, p):
     Ay, offset_y, nc_y = _dierckx.data_matrix(y, ty, ky, w_y)
     Q = z.copy()
 
-    if p == -1:
-        return (PackedMatrix(Ax, offset_x, nc_x),
-                PackedMatrix(Ay, offset_y, nc_y),
-                None, None, Q)
-
-    Drx, offset_dx, nc_dx = disc(tx, kx)
-    Dry, offset_dy, nc_dy = disc(ty, ky)
-
     return (PackedMatrix(Ax, offset_x, nc_x),
             PackedMatrix(Ay, offset_y, nc_y),
-            PackedMatrix(Drx, offset_dx, nc_dx),
-            PackedMatrix(Dry, offset_dy, nc_dy), Q)
+            Q)
 
 TOL = 0.001
 
@@ -961,9 +953,9 @@ def _regrid_python_fitpack(
         # _not_a_knot produces desired knot vector
         tx = _not_a_knot(x_fit, kx)
         ty = _not_a_knot(y_fit, ky)
-        (Ax, Ay, Drx, Dry, Q) = build_matrices(
-             x_fit, y_fit, Z, tx, ty, kx, ky, p)
-        C0, fp  = _solve_2d_fitpack(Ax, Drx, Ay, Dry, Q, p,
+        (Ax, Ay, Q) = build_design_matrices(
+             x_fit, y_fit, Z, tx, ty, kx, ky)
+        C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
                                     kx, tx, x_fit, ky, ty,
                                     y_fit, Z_fit)
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
@@ -981,11 +973,12 @@ def _regrid_python_fitpack(
     # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
     for _ in range(mpm):
 
-        (Ax, Ay, Drx, Dry, Q) = build_matrices(
-             x_fit, y_fit, Z, tx, ty, kx, ky, p)
-        C0, fp  = _solve_2d_fitpack(Ax, Drx, Ay, Dry, Q, p,
-                                    kx, tx, x_fit, ky, ty,
-                                    y_fit, Z_fit)
+        (Ax, Ay, Q) = build_design_matrices(
+             x_fit, y_fit, Z, tx, ty, kx, ky)
+        C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
+                                    kx, tx, x_fit,
+                                    ky, ty, y_fit,
+                                    Z_fit)
 
         # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L190
         # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L224
@@ -1029,8 +1022,12 @@ def _regrid_python_fitpack(
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
 
     p = 1
-    (Ax, Ay, Drx, Dry, Q) = build_matrices(
-        x_fit, y_fit, Z, tx, ty, kx, ky, p)
+    Drx, offset_dx, nc_dx = disc(tx, kx)
+    Dry, offset_dy, nc_dy = disc(ty, ky)
+    Drx = PackedMatrix(Drx, offset_dx, nc_dx)
+    Dry = PackedMatrix(Dry, offset_dy, nc_dy)
+    (Ax, Ay, Q) = build_design_matrices(
+        x_fit, y_fit, Z, tx, ty, kx, ky)
     _, C_sm, fp_sm = _p_search_hit_s(Ax, Drx, Ay, Dry, Q,
                                      kx, tx, x_fit, ky,
                                      ty, y_fit, Z_fit, s,
