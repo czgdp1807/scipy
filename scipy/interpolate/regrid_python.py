@@ -108,10 +108,11 @@ as FITPACK, but without relying on the single monolithic REGRID entry point.
 The final `(tx, ty, C)` are packaged as an `NdBSpline` for convenient evaluation.
 """
 import numpy as np
-from scipy.interpolate import BSpline, NdBSpline
+from scipy.interpolate import NdBSpline
 from scipy.interpolate._fitpack_repro import (
     root_rati, disc, add_knot, _not_a_knot)
 from . import _dierckx
+from scipy.sparse import csr_array
 
 def ndbspline_call_like_bivariate(ndbs, x, y, dx=0, dy=0, grid=True):
     """
@@ -292,7 +293,7 @@ def _stack_augmented_fitpack(A, D, nc, k, p):
     infinite `p` (interpolation, no smoothing penalty).
     """
     if p == -1:
-        return A.a, A.offset, nc
+        return A.a.copy(), A.offset.copy(), nc
 
     nz = k + 1
     AA = np.zeros((nc + D.shape[0], k + 2), dtype=float)
@@ -301,6 +302,20 @@ def _stack_augmented_fitpack(A, D, nc, k, p):
     offset = np.r_[A.offset, D.offset]
     return AA, offset, nc
 
+def _packed_to_csr(data, offsets, k, m, len_t):
+    data = data.ravel()
+
+    # Convert from per-row offsets to the CSR indices/indptr format
+    indices = np.repeat(offsets, k+1).reshape(-1, k+1)
+    indices = indices + np.arange(k+1, dtype=offsets.dtype)
+    indices = indices.ravel()
+
+    indptr = np.arange(0, (m + 1) * (k + 1), k + 1, dtype=offsets.dtype)
+
+    return csr_array(
+        (data, indices, indptr),
+        shape=(m, len_t - k - 1)
+    )
 
 def _solve_2d_fitpack(Ax, Dx, Ay,
                       Dy, Q, p,
@@ -490,8 +505,8 @@ def _solve_2d_fitpack(Ax, Dx, Ay,
     # is not implemented. BSpline.design_matrix builds a full design matrix,
     # in CSR format, that supports standard @ operations for residual
     # evaluation and diagnostics.
-    _Ax = BSpline.design_matrix(x_x, tx, kx, extrapolate=False)
-    _Ay = BSpline.design_matrix(x_y, ty, ky, extrapolate=False)
+    _Ax = _packed_to_csr(Ax.a, Ax.offset, kx, x_x.shape[0], len(tx))
+    _Ay = _packed_to_csr(Ay.a, Ay.offset, ky, x_y.shape[0], len(ty))
 
     # Evaluate the fitted surface: zhat = Ax * C^T * Ay^T
     # Note: C currently aligns so that C.T matches x-first multiplication order.
@@ -985,8 +1000,10 @@ def _regrid_python_fitpack(
         # is not implemented. BSpline.design_matrix builds a full design matrix,
         # in CSR format, that supports standard @ operations for residual
         # evaluation and diagnostics.
-        _Ax = BSpline.design_matrix(x_fit, tx, kx, extrapolate=False)
-        _Ay = BSpline.design_matrix(y_fit, ty, ky, extrapolate=False)
+        _Ax = _packed_to_csr(Ax.a, Ax.offset, kx, x_fit.shape[0], len(tx))
+        _Ay = _packed_to_csr(Ay.a, Ay.offset, ky, y_fit.shape[0], len(ty))
+
+
         Z0  = _Ax @ C0 @ _Ay.T
         R = Z_fit - Z0
 
