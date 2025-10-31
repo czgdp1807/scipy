@@ -249,6 +249,22 @@ class PackedMatrix:
             out[i, self.offset[i]:self.offset[i] + nel] = self.a[i, :nel]
         return out
 
+    def tocsr(self, k, m, len_t):
+        data = self.a.ravel()
+
+        # Convert from per-row offsets to the CSR indices/indptr format
+        indices = np.repeat(self.offset, k+1).reshape(-1, k+1)
+        indices = indices + np.arange(k+1, dtype=self.offset.dtype)
+        indices = indices.ravel()
+
+        indptr = np.arange(0, (m + 1) * (k + 1), k + 1,
+                           dtype=self.offset.dtype)
+
+        return csr_array(
+            (data, indices, indptr),
+            shape=(m, len_t - k - 1)
+    )
+
 def _stack_augmented_fitpack(A, D, nc, k, p):
     """
     Stack data and smoothing-penalty rows for banded QR, using 1/p weighting.
@@ -301,21 +317,6 @@ def _stack_augmented_fitpack(A, D, nc, k, p):
     AA[nc:, :] = D.a / p
     offset = np.r_[A.offset, D.offset]
     return AA, offset, nc
-
-def _packed_to_csr(data, offsets, k, m, len_t):
-    data = data.ravel()
-
-    # Convert from per-row offsets to the CSR indices/indptr format
-    indices = np.repeat(offsets, k+1).reshape(-1, k+1)
-    indices = indices + np.arange(k+1, dtype=offsets.dtype)
-    indices = indices.ravel()
-
-    indptr = np.arange(0, (m + 1) * (k + 1), k + 1, dtype=offsets.dtype)
-
-    return csr_array(
-        (data, indices, indptr),
-        shape=(m, len_t - k - 1)
-    )
 
 def _solve_2d_fitpack(Ax, Ay, Q, p,
                       kx, tx, x_x,
@@ -505,8 +506,8 @@ def _solve_2d_fitpack(Ax, Ay, Q, p,
     # is not implemented. BSpline.design_matrix builds a full design matrix,
     # in CSR format, that supports standard @ operations for residual
     # evaluation and diagnostics.
-    _Ax = _packed_to_csr(Ax.a, Ax.offset, kx, x_x.shape[0], len(tx))
-    _Ay = _packed_to_csr(Ay.a, Ay.offset, ky, x_y.shape[0], len(ty))
+    _Ax = Ax.tocsr(kx, x_x.shape[0], len(tx))
+    _Ay = Ay.tocsr(ky, x_y.shape[0], len(ty))
 
     # Evaluate the fitted surface: zhat = Ax * C^T * Ay^T
     # Note: C currently aligns so that C.T matches x-first multiplication order.
@@ -993,8 +994,8 @@ def _regrid_python_fitpack(
         # is not implemented. BSpline.design_matrix builds a full design matrix,
         # in CSR format, that supports standard @ operations for residual
         # evaluation and diagnostics.
-        _Ax = _packed_to_csr(Ax.a, Ax.offset, kx, x_fit.shape[0], len(tx))
-        _Ay = _packed_to_csr(Ay.a, Ay.offset, ky, y_fit.shape[0], len(ty))
+        _Ax = Ax.tocsr(kx, x_fit.shape[0], len(tx))
+        _Ay = Ay.tocsr(ky, y_fit.shape[0], len(ty))
 
 
         Z0  = _Ax @ C0 @ _Ay.T
