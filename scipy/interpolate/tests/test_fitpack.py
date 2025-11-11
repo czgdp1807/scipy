@@ -413,7 +413,7 @@ def test_dblint(k):
     xx, yy = np.meshgrid(x, y)
     rect = RectBivariateSpline(x, y, 4 * xx * yy,
                                kx=k, ky=k)
-    rect_custom = regrid_python.regrid_python(x, y, 4 * xx * yy,
+    rect_custom = regrid_python(x, y, 4 * xx * yy,
                                               kx=k, ky=k)
     tck = list(rect.tck)
     tck.extend(rect.degrees)

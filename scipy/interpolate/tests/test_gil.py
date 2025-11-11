@@ -5,8 +5,6 @@ import time
 import numpy as np
 import pytest
 import scipy.interpolate
-import scipy.interpolate.regrid_python
-
 
 class TestGIL:
     """Check if the GIL is properly released by scipy.interpolate functions."""
@@ -49,7 +47,7 @@ class TestGIL:
             scipy.interpolate.RectBivariateSpline(x, y, z)
 
         def interpolate_custom(x, y, z):
-            scipy.interpolate.regrid_python.regrid_python(x, y, z)
+            scipy.interpolate.regrid_python(x, y, z)
 
         args = calibrate_delay(requested_time=3)
         worker_thread = self.make_worker_thread(interpolate, args)
