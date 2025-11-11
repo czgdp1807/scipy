@@ -149,7 +149,7 @@ as FITPACK, but without relying on the single monolithic REGRID entry point.
 - `return_NdBSpline(...)` - packs `(tx, ty, C)` into an `NdBSpline`.
 """
 import numpy as np
-from scipy.interpolate import NdBSpline
+from scipy.interpolate._ndbspline import NdBSpline
 from scipy.interpolate._fitpack_repro import (
     root_rati, disc, add_knot, _not_a_knot)
 from . import _dierckx
