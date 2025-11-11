@@ -1051,9 +1051,7 @@ def _regrid_python_fitpack(
     return return_NdBSpline(fp_sm, (tx, ty, C_sm), (kx, ky))
 
 
-def regrid_python(x, y, Z, *,
-    kx=3, ky=3, s=0.0, maxit=50, nestx=None,
-    nesty=None, bbox=[None]*4):
+def regrid_python(x, y, z, *, bbox=[None]*4, kx=3, ky=3, s=0.0, maxit=50):
     """
     Public interface for 2-D smoothing B-spline fitting (1/p penalty form).
 
@@ -1061,8 +1059,10 @@ def regrid_python(x, y, Z, *,
     ----------
     x, y : array_like
         Strictly increasing 1-D coordinate vectors.
-    Z : array_like, shape (len(x), len(y))
+    z : array_like, shape (len(x), len(y))
         Data grid.
+    bbox : sequence of 4 scalars
+        Optional bounding box `(xb, xe, yb, ye)`; use `None` entries to disable.
     kx, ky : int, optional
         Spline degrees along x and y, default cubic (3).
     s : float, optional
@@ -1073,10 +1073,6 @@ def regrid_python(x, y, Z, *,
         Setting `p == -1` internally denotes *p = inf*, i.e. a pure interpolant.
     maxit : int, optional
         Maximum iterations for `p`-search if invoked.
-    nestx, nesty : int or None
-        Nesting limits for coefficient counts per axis.
-    bbox : sequence of 4 scalars
-        Optional bounding box `(xb, xe, yb, ye)`; use `None` entries to disable.
 
     Returns
     -------
@@ -1093,16 +1089,16 @@ def regrid_python(x, y, Z, *,
 
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    Z = np.asarray(Z, float)
+    z = np.asarray(z, float)
     bbox = np.ravel(bbox)
 
     if not np.all(np.diff(x) > 0.0):
         raise ValueError("x must be strictly increasing")
     if not np.all(np.diff(y) > 0.0):
         raise ValueError("y must be strictly increasing")
-    if x.size != Z.shape[0]:
+    if x.size != z.shape[0]:
         raise ValueError("x dimension of z must have same number of elements as x")
-    if y.size != Z.shape[1]:
+    if y.size != z.shape[1]:
         raise ValueError("y dimension of z must have same number of elements as y")
     if s is not None and not (s >= 0.0):
         raise ValueError("s should be s >= 0.0")
@@ -1110,5 +1106,5 @@ def regrid_python(x, y, Z, *,
         raise ValueError(f"bbox shape should be (4,), found: {bbox.shape}")
 
     return _regrid_python_fitpack(
-        x, y, Z, kx=kx, ky=ky, s=s, maxit=maxit,
-        nestx=nestx, nesty=nesty, bbox=bbox)
+        x, y, z, kx=kx, ky=ky, s=s, maxit=maxit,
+        nestx=None, nesty=None, bbox=bbox)
