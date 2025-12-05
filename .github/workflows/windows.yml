@@ -28,7 +28,7 @@ jobs:
     #        (b) it does run with Act locally (`github` doesn't exist there)
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: windows-2025
     steps:
       - name: Checkout
@@ -59,7 +59,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: windows-2025
     steps:
       - name: Checkout
@@ -102,7 +102,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1
-      && (github.repository == 'scipy/scipy' || github.repository == '')
+      && (github.repository == 'czgdp1807/scipy' || github.repository == '')
     runs-on: windows-2025
     steps:
       - name: Checkout
@@ -163,7 +163,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1 &&
-      (github.repository == 'scipy/scipy' || github.repository == '')
+      (github.repository == 'czgdp1807/scipy' || github.repository == '')
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -203,7 +203,7 @@ jobs:
     needs: get_commit_message
     if: >
       needs.get_commit_message.outputs.message == 1 &&
-      (github.repository == 'scipy/scipy' || github.repository == '')
+      (github.repository == 'czgdp1807/scipy' || github.repository == '')
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
