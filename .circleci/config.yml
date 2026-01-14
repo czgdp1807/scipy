@@ -112,6 +112,10 @@ jobs:
       - check-skip
       - apt-install
 
+      - restore_cache:
+          keys:
+            - -{{ checksum "dev.py" }}-{{ .Branch }}-
+
       - run:
           name: build docs
           no_output_timeout: 25m
@@ -134,6 +138,11 @@ jobs:
           root: doc/build
           paths:
             - html
+
+      - save_cache:
+          key: -{{ checksum "dev.py" }}-{{ .Branch }}-
+          paths:
+            - doc/source
 
 # Run benchmarks
 
