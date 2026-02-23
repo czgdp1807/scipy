@@ -1901,6 +1901,67 @@ PackedMatrix::shape() const
 
 
 void
+_build_design_matrices(
+    const double *x, int64_t mx,
+    const double *y, int64_t my,
+    const double *z, int64_t mz0, int64_t mz1,
+    const double *tx, int64_t len_tx,
+    const double *ty, int64_t len_ty,
+    int kx, int ky,
+    double *Ax_a,
+    int64_t *Ax_offset,
+    int64_t *Ax_nc,
+    double *Ay_a,
+    int64_t *Ay_offset,
+    int64_t *Ay_nc,
+    double *Q
+)
+{
+    // Create unit-weight vectors
+    std::vector<double> w_x(mx, 1.0);
+    std::vector<double> w_y(my, 1.0);
+
+    // Work arrays for data_matrix (one per dimension)
+    std::vector<double> wrk_x(2*kx + 2);
+    std::vector<double> wrk_y(2*ky + 2);
+
+
+    // Call data_matrix for x: produces Ax, offset_x, nc_x
+    data_matrix(
+        x, mx,
+        tx, len_tx,
+        kx,
+        w_x.data(),
+        0,  // extrapolate = false
+        Ax_a,
+        Ax_offset,
+        Ax_nc,
+        wrk_x.data()
+    );
+
+    // Call data_matrix for y: produces Ay, offset_y, nc_y
+    data_matrix(
+        y, my,
+        ty, len_ty,
+        ky,
+        w_y.data(),
+        0,  // extrapolate = false
+        Ay_a,
+        Ay_offset,
+        Ay_nc,
+        wrk_y.data()
+    );
+
+    // Copy z to Q (row-major layout: Q[i, j] = z[i * mz1 + j])
+    for (int64_t i = 0; i < mz0; ++i) {
+        for (int64_t j = 0; j < mz1; ++j) {
+            Q[i * mz1 + j] = z[i * mz1 + j];
+        }
+    }
+}
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,

@@ -367,6 +367,32 @@ _coloc_nd(/* inputs */
 
 
 void
+_build_design_matrices(
+    // inputs: x data
+    const double *x, int64_t mx,
+    // inputs: y data
+    const double *y, int64_t my,
+    // inputs: z data (2D gridded values)
+    const double *z, int64_t mz0, int64_t mz1,
+    // inputs: knot vectors
+    const double *tx, int64_t len_tx,
+    const double *ty, int64_t len_ty,
+    // inputs: spline degrees
+    int kx, int ky,
+    // outputs: Ax packed matrix (mx rows x (kx+1) cols)
+    double *Ax_a,
+    int64_t *Ax_offset,
+    int64_t *Ax_nc,
+    // outputs: Ay packed matrix (my rows x (ky+1) cols)
+    double *Ay_a,
+    int64_t *Ay_offset,
+    int64_t *Ay_nc,
+    // output: Q (copy of z)
+    double *Q
+);
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,
