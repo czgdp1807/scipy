@@ -393,6 +393,20 @@ _build_design_matrices(
 
 
 void
+_stack_augmented_fitpack(
+    // inputs: A packed matrix (m_A rows x (k+1) cols)
+    const double *A_a, const int64_t *A_offset, int64_t m_A,
+    // inputs: D packed matrix (m_D rows x (k+1) cols)
+    const double *D_a, const int64_t *D_offset, int64_t m_D,
+    // inputs: parameters
+    int64_t nc, int k, double p,
+    // outputs: AA augmented matrix ((nc + m_D) rows x (k+2) cols)
+    double *AA,
+    int64_t *offset_aug
+);
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,

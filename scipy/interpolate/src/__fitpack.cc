@@ -1962,6 +1962,68 @@ _build_design_matrices(
 
 
 void
+_stack_augmented_fitpack(
+    const double *A_a, const int64_t *A_offset, int64_t m_A,
+    const double *D_a, const int64_t *D_offset, int64_t m_D,
+    int64_t nc, int k, double p,
+    double *AA,
+    int64_t *offset_aug
+)
+{
+    // If p == -1 (interpolatory limit), return A as-is (no augmentation)
+    if (p == -1.0) {
+        // Copy A to first nc rows of AA (only first k+1 columns)
+        for (int64_t i = 0; i < nc; ++i) {
+            for (int j = 0; j <= k; ++j) {
+                AA[i * (k + 2) + j] = A_a[i * (k + 1) + j];
+            }
+            // Column k+1 is left as zero (initialized by caller)
+        }
+        // Copy offsets from A
+        for (int64_t i = 0; i < nc; ++i) {
+            offset_aug[i] = A_offset[i];
+        }
+        return;
+    }
+
+    // Augmented case: stack A on top, then D/p below
+    int nz = k + 1;
+
+    // Copy A to first nc rows (k+1 columns)
+    for (int64_t i = 0; i < nc; ++i) {
+        for (int j = 0; j < nz; ++j) {
+            AA[i * (k + 2) + j] = A_a[i * nz + j];
+        }
+        // Column k+1 is zero
+        AA[i * (k + 2) + k + 1] = 0.0;
+    }
+
+    // Copy A's offsets for first nc rows
+    for (int64_t i = 0; i < nc; ++i) {
+        offset_aug[i] = A_offset[i];
+    }
+
+    // Copy D/p to rows [nc, nc+m_D) (all k+2 columns)
+    for (int64_t i = 0; i < m_D; ++i) {
+        for (int j = 0; j <= k + 1; ++j) {
+            if (j < nz) {
+                // Scale D values by 1/p
+                AA[(nc + i) * (k + 2) + j] = D_a[i * nz + j] / p;
+            } else {
+                // Column k+1 from D (if exists, otherwise zero)
+                AA[(nc + i) * (k + 2) + j] = 0.0;
+            }
+        }
+    }
+
+    // Copy D's offsets for rows [nc, nc+m_D)
+    for (int64_t i = 0; i < m_D; ++i) {
+        offset_aug[nc + i] = D_offset[i];
+    }
+}
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,
