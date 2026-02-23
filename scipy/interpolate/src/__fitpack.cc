@@ -1883,4 +1883,50 @@ void init_augmented_matrices(
 }
 
 
+PackedMatrix::PackedMatrix(
+    double *a_ptr, int64_t a_nrows, int64_t a_ncols,
+    int64_t *offset_ptr, int64_t offset_n,
+    int64_t nc_
+) : a(a_ptr, a_nrows, a_ncols),
+    offset(offset_ptr, offset_n),
+    nc(nc_)
+{}
+
+
+std::tuple<int64_t, int64_t>
+PackedMatrix::shape() const
+{
+    return std::make_tuple(a.nrows, nc);
+}
+
+
+void
+_regrid_python_fitpack(
+    const double *x,
+    int64_t mx,
+    const double *y,
+    int64_t my,
+    const double *z,
+    int64_t mz0,
+    int64_t mz1,
+    int kx,
+    int ky,
+    double s,
+    int maxit
+)
+{
+    (void)x;
+    (void)mx;
+    (void)y;
+    (void)my;
+    (void)z;
+    (void)mz0;
+    (void)mz1;
+    (void)kx;
+    (void)ky;
+    (void)s;
+    (void)maxit;
+}
+
+
 } // namespace fitpack

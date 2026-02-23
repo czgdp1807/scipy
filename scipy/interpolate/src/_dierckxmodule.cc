@@ -87,6 +87,53 @@ py_fpknot(PyObject* self, PyObject *args)
 
 
 /*
+ * def _regrid_python_fitpack(x, y, z, *, kx=3, ky=3, s=0.0, maxit=50):
+ */
+static PyObject*
+py_regrid_python_fitpack(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_x = NULL, *py_y = NULL, *py_z = NULL;
+    int kx = 3, ky = 3, maxit = 50;
+    double s = 0.0;
+
+    const char *kwlist[] = {
+        "x", "y", "z", "kx", "ky", "s", "maxit", NULL
+    };
+
+    if(!PyArg_ParseTupleAndKeywords(
+            args, kwargs, "OOO|iidi", const_cast<char **>(kwlist),
+            &py_x, &py_y, &py_z,
+            &kx, &ky, &s, &maxit)) {
+        return NULL;
+    }
+
+    if (!(check_array(py_x, 1, NPY_DOUBLE) &&
+          check_array(py_y, 1, NPY_DOUBLE) &&
+          check_array(py_z, 2, NPY_DOUBLE))) {
+        return NULL;
+    }
+
+    PyArrayObject *a_x = (PyArrayObject *)py_x;
+    PyArrayObject *a_y = (PyArrayObject *)py_y;
+    PyArrayObject *a_z = (PyArrayObject *)py_z;
+
+    try {
+        fitpack::_regrid_python_fitpack(
+            static_cast<const double *>(PyArray_DATA(a_x)), PyArray_DIM(a_x, 0),
+            static_cast<const double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 0),
+            static_cast<const double *>(PyArray_DATA(a_z)), PyArray_DIM(a_z, 0), PyArray_DIM(a_z, 1),
+            kx, ky, s, maxit
+        );
+        Py_RETURN_NONE;
+    }
+    catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return NULL;
+    }
+}
+
+
+/*
  * def _fpback(const double[:, ::1] R, ssize_t nc,  # (R, offset, nc) triangular => offset is range(nc)
  *             const double[:, ::1] y
  */
@@ -1450,6 +1497,8 @@ py_coloc_nd(PyObject *self, PyObject *args)
 
 static PyMethodDef DierckxMethods[] = {
     //...
+    {"_regrid_python_fitpack", (PyCFunction)py_regrid_python_fitpack, METH_VARARGS | METH_KEYWORDS,
+     "placeholder for C regrid_python_fitpack implementation"},
     {"fpknot", py_fpknot, METH_VARARGS,
      "fpknot replacement"},
     {"fpback", py_fpback, METH_VARARGS,

@@ -108,6 +108,22 @@ typedef Array1D<const int64_t, BOUNDS_CHECK> ConstIndexArray1D;
 typedef Array2D<const int64_t, BOUNDS_CHECK> ConstIndexArray2D;
 
 
+struct PackedMatrix
+{
+    RealArray2D a;
+    IndexArray1D offset;
+    int64_t nc;
+
+    PackedMatrix(
+        double *a_ptr, int64_t a_nrows, int64_t a_ncols,
+        int64_t *offset_ptr, int64_t offset_n,
+        int64_t nc_
+    );
+
+    std::tuple<int64_t, int64_t> shape() const;
+};
+
+
 
 /*
  * B-spline evaluation routine.
@@ -347,6 +363,22 @@ _coloc_nd(/* inputs */
           /* outputs */
           int64_t *csr_indices_ptr, int64_t volume,          // shape (npts*volume,)
           double *csr_data_ptr
+);
+
+
+void
+_regrid_python_fitpack(
+    const double *x,
+    int64_t mx,
+    const double *y,
+    int64_t my,
+    const double *z,
+    int64_t mz0,
+    int64_t mz1,
+    int kx,
+    int ky,
+    double s,
+    int maxit
 );
 
 
