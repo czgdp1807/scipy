@@ -2024,6 +2024,319 @@ _stack_augmented_fitpack(
 
 
 void
+packed_matmul_dense_T(
+    const double *A_a, const int64_t *A_offset, int64_t m_A, int64_t nc_A, int64_t nz,
+    const double *B, int64_t m_B, int64_t n_B,
+    double *C
+)
+{
+    // Compute C = A @ B.T
+    // A is packed: m_A rows, nc_A cols, nz non-zeros per row
+    // B is dense: m_B rows x n_B cols (row-major)
+    // C is dense: m_A rows x m_B cols (row-major)
+    //
+    // C[i, j] = sum_k A[i, k] * B[j, k]
+    //         = sum_k A_a[i, k-offset[i]] * B[j, k]  (for k in [offset[i], offset[i]+nz))
+
+    // Initialize C to zero
+    for (int64_t i = 0; i < m_A * m_B; ++i) {
+        C[i] = 0.0;
+    }
+
+    // For each row of A
+    for (int64_t i = 0; i < m_A; ++i) {
+        int64_t offset_i = A_offset[i];
+
+        // For each row of B (column of B.T)
+        for (int64_t j = 0; j < m_B; ++j) {
+            double sum = 0.0;
+
+            // Sum over non-zero columns of A[i, :]
+            for (int64_t k_local = 0; k_local < nz; ++k_local) {
+                int64_t k_global = offset_i + k_local;
+
+                // Check bounds: k_global must be < nc_A and < n_B (B's column count)
+                if (k_global < nc_A && k_global < n_B) {
+                    sum += A_a[i * nz + k_local] * B[j * n_B + k_global];
+                }
+            }
+
+            C[i * m_B + j] = sum;
+        }
+    }
+}
+
+
+void
+dense_matmul_packed_T(
+    const double *A, int64_t m_A, int64_t n_A,
+    const double *B_a, const int64_t *B_offset, int64_t m_B, int64_t nc_B, int64_t nz,
+    double *C
+)
+{
+    // Compute C = A @ B.T
+    // A is dense: m_A rows x n_A cols (row-major)
+    // B is packed: m_B rows, nc_B cols, nz non-zeros per row
+    // C is dense: m_A rows x m_B cols (row-major)
+    //
+    // C[i, j] = sum_k A[i, k] * B[j, k]
+    //         = sum_k A[i, k] * B_a[j, k-offset[j]]  (for k in [offset[j], offset[j]+nz))
+
+    // Initialize C to zero
+    for (int64_t i = 0; i < m_A * m_B; ++i) {
+        C[i] = 0.0;
+    }
+
+    // For each row of A
+    for (int64_t i = 0; i < m_A; ++i) {
+        // For each row of B (column of B.T)
+        for (int64_t j = 0; j < m_B; ++j) {
+            double sum = 0.0;
+            int64_t offset_j = B_offset[j];
+
+            // Sum over non-zero columns of B[j, :]
+            for (int64_t k_local = 0; k_local < nz; ++k_local) {
+                int64_t k_global = offset_j + k_local;
+
+                // Check bounds: k_global must be < nc_B and < n_A (A's column count)
+                if (k_global < nc_B && k_global < n_A) {
+                    sum += A[i * n_A + k_global] * B_a[j * nz + k_local];
+                }
+            }
+
+            C[i * m_B + j] = sum;
+        }
+    }
+}
+
+
+void
+evaluate(
+    const double *Ax_a, const int64_t *Ax_offset, int64_t mx, int64_t nc_x, int kx,
+    const double *Ay_a, const int64_t *Ay_offset, int64_t my, int64_t nc_y, int ky,
+    const double *C,
+    double *Z
+)
+{
+    // Compute Z = Ax @ C.T @ Ay.T
+    // where:
+    //   Ax is packed: mx rows, nc_x cols, (kx+1) non-zeros per row
+    //   C is dense: nc_x rows x nc_y cols (row-major)
+    //   Ay is packed: my rows, nc_y cols, (ky+1) non-zeros per row
+    //   Z is dense: mx rows x my cols (row-major)
+    //
+    // Strategy:
+    //   1. Compute temp = Ax @ C.T  (mx x nc_y)
+    //   2. Compute Z = temp @ Ay.T  (mx x my)
+
+    int nz_x = kx + 1;
+    int nz_y = ky + 1;
+
+    // Allocate temporary matrix: temp = Ax @ C.T
+    // temp has shape (mx, nc_y)
+    std::vector<double> temp(mx * nc_y);
+
+    // Step 1: temp = Ax @ C.T
+    // Ax is packed (mx x nc_x), C is dense (nc_x x nc_y)
+    packed_matmul_dense_T(
+        Ax_a, Ax_offset, mx, nc_x, nz_x,
+        C, nc_x, nc_y,
+        temp.data()
+    );
+
+    // Step 2: Z = temp @ Ay.T
+    // temp is dense (mx x nc_y), Ay is packed (my x nc_y)
+    // Use dense_matmul_packed_T
+    dense_matmul_packed_T(
+        temp.data(), mx, nc_y,
+        Ay_a, Ay_offset, my, nc_y, nz_y,
+        Z
+    );
+}
+
+
+void
+_solve_2d_fitpack(
+    const double *Ax_a, const int64_t *Ax_offset, int64_t mx, int64_t nc_x,
+    const double *Ay_a, const int64_t *Ay_offset, int64_t my, int64_t nc_y,
+    double *Q, int64_t mq0, int64_t mq1,
+    double p,
+    int kx, const double *tx, int64_t len_tx,
+    int ky, const double *ty, int64_t len_ty,
+    const double *x_x, int64_t mx_x,
+    const double *x_y, int64_t my_x,
+    const double *z, int64_t mz0, int64_t mz1,
+    const double *Dx_a, const int64_t *Dx_offset, int64_t mx_dx, int64_t nc_dx,
+    const double *Dy_a, const int64_t *Dy_offset, int64_t my_dy, int64_t nc_dy,
+    double *C,
+    double *fp
+)
+{
+    // Implementation of the 2D FITPACK solver using separable QR decomposition.
+    // This follows the Python _solve_2d_fitpack logic:
+    // 1. Build augmented matrices Ax_aug and Ay_aug (stacking penalty terms if p != -1)
+    // 2. Perform QR reduction on x-direction with augmented matrix
+    // 3. Back-substitute to get T (partial coefficients)
+    // 4. Transpose T to make it RHS for y-direction
+    // 5. Perform QR reduction on y-direction with augmented matrix
+    // 6. Back-substitute to get C (final coefficients)
+    // 7. Evaluate surface and compute residual
+
+    int nz_x = kx + 1;
+    int nz_y = ky + 1;
+
+    // Create unit-weight vectors for FITPACK fpback calls
+    std::vector<double> w_x(mx_x, 1.0);
+    std::vector<double> w_y(my_x, 1.0);
+
+    // Build augmented matrix for x-direction
+    int64_t m_augx = (p == -1.0) ? mx : mx + mx_dx;
+    std::vector<double> Ax_aug_a(m_augx * nz_x);
+    std::vector<int64_t> Ax_aug_offset(m_augx);
+
+    _stack_augmented_fitpack(
+        Ax_a, Ax_offset, mx,
+        Dx_a, Dx_offset, mx_dx,
+        mx, kx, p,
+        Ax_aug_a.data(), Ax_aug_offset.data()
+    );
+
+    // Build augmented matrix for y-direction
+    int64_t m_augy = (p == -1.0) ? my : my + my_dy;
+    std::vector<double> Ay_aug_a(m_augy * nz_y);
+    std::vector<int64_t> Ay_aug_offset(m_augy);
+
+    _stack_augmented_fitpack(
+        Ay_a, Ay_offset, my,
+        Dy_a, Dy_offset, my_dy,
+        my, ky, p,
+        Ay_aug_a.data(), Ay_aug_offset.data()
+    );
+
+    // Pad Q with zeros if penalty rows were added to Ax_aug
+    std::vector<double> Q_padded_x;
+    double *Qx = Q;
+    int64_t Q_rows_x = mq0;
+
+    if (p != -1.0) {
+        Q_padded_x.resize((mq0 + mx_dx) * mq1, 0.0);
+        // Copy original Q to top of padded Q
+        for (int64_t i = 0; i < mq0; ++i) {
+            for (int64_t j = 0; j < mq1; ++j) {
+                Q_padded_x[i * mq1 + j] = Q[i * mq1 + j];
+            }
+        }
+        Qx = Q_padded_x.data();
+        Q_rows_x = mq0 + mx_dx;
+    }
+
+    // Perform QR reduction on x-augmented system
+    qr_reduce(
+        Ax_aug_a.data(), m_augx, nz_x,
+        Ax_aug_offset.data(), nc_x,
+        Qx, mq1
+    );
+
+    // Back-substitute along x to get T (partial coefficients)
+    // T has shape (nc_x, mq1)
+    std::vector<double> T(nc_x * mq1);
+    std::vector<double> residuals_x(nc_x * mq1, 0.0);
+
+    fpback(
+        Ax_aug_a.data(), m_augx, nz_x,
+        nc_x,
+        x_x, mx_x,
+        tx, len_tx,
+        kx,
+        w_x.data(),
+        0,  // extrapolate=false
+        nullptr,  // ywptr
+        Qx, mq1,
+        T.data(),
+        nullptr,  // fp pointer
+        residuals_x.data()
+    );
+
+    // Transpose T to prepare for y-direction solve
+    // T was (nc_x, mq1), now need (mq1, nc_x) for y-solve
+    std::vector<double> T_T(mq1 * nc_x);
+    for (int64_t i = 0; i < nc_x; ++i) {
+        for (int64_t j = 0; j < mq1; ++j) {
+            T_T[j * nc_x + i] = T[i * mq1 + j];
+        }
+    }
+
+    // Pad T_T with zeros if penalty rows were added to Ay_aug
+    std::vector<double> Q_padded_y;
+    double *Qy = T_T.data();
+    int64_t Q_rows_y = mq1;
+
+    if (p != -1.0) {
+        Q_padded_y.resize((mq1 + my_dy) * nc_x, 0.0);
+        // Copy T_T to top of padded Q_y
+        for (int64_t i = 0; i < mq1; ++i) {
+            for (int64_t j = 0; j < nc_x; ++j) {
+                Q_padded_y[i * nc_x + j] = T_T[i * nc_x + j];
+            }
+        }
+        Qy = Q_padded_y.data();
+        Q_rows_y = mq1 + my_dy;
+    }
+
+    // Perform QR reduction on y-augmented system
+    qr_reduce(
+        Ay_aug_a.data(), m_augy, nz_y,
+        Ay_aug_offset.data(), nc_y,
+        Qy, nc_x
+    );
+
+    // Back-substitute along y to get C (final coefficients)
+    // C has shape (nc_y, nc_x) but fpback returns (nc, ydim2)
+    std::vector<double> C_temp(nc_y * nc_x);
+    std::vector<double> residuals_y(nc_y * nc_x, 0.0);
+
+    fpback(
+        Ay_aug_a.data(), m_augy, nz_y,
+        nc_y,
+        x_y, my_x,
+        ty, len_ty,
+        ky,
+        w_y.data(),
+        0,  // extrapolate=false
+        nullptr,  // ywptr
+        Qy, nc_x,
+        C_temp.data(),
+        nullptr,  // fp pointer
+        residuals_y.data()
+    );
+
+    // Copy C_temp to output C (nc_y x nc_x) in row-major order
+    for (int64_t i = 0; i < nc_y * nc_x; ++i) {
+        C[i] = C_temp[i];
+    }
+
+    // Evaluate the fitted surface: zhat = Ax @ C.T @ Ay.T
+    // Result has shape (mx, my)
+    std::vector<double> zhat(mx * my, 0.0);
+    evaluate(
+        Ax_a, Ax_offset, mx, nc_x, kx,
+        Ay_a, Ay_offset, my, nc_y, ky,
+        C,
+        zhat.data()
+    );
+
+    // Compute residual sum of squares: fp = sum((z - zhat)^2)
+    double residual = 0.0;
+    for (int64_t i = 0; i < mz0 * mz1; ++i) {
+        double diff = z[i] - zhat[i];
+        residual += diff * diff;
+    }
+
+    *fp = residual;
+}
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,

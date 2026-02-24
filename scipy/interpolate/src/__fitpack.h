@@ -407,6 +407,72 @@ _stack_augmented_fitpack(
 
 
 void
+packed_matmul_dense_T(
+    // inputs: A packed matrix (m_A rows, nc_A cols, nz non-zeros per row)
+    const double *A_a, const int64_t *A_offset, int64_t m_A, int64_t nc_A, int64_t nz,
+    // inputs: B dense matrix (m_B rows x n_B cols), row-major
+    const double *B, int64_t m_B, int64_t n_B,
+    // output: C dense matrix (m_A rows x m_B cols), row-major
+    // C = A @ B.T
+    double *C
+);
+
+
+void
+dense_matmul_packed_T(
+    // inputs: A dense matrix (m_A rows x n_A cols), row-major
+    const double *A, int64_t m_A, int64_t n_A,
+    // inputs: B packed matrix (m_B rows, nc_B cols, nz non-zeros per row)
+    const double *B_a, const int64_t *B_offset, int64_t m_B, int64_t nc_B, int64_t nz,
+    // output: C dense matrix (m_A rows x m_B cols), row-major
+    // C = A @ B.T
+    double *C
+);
+
+
+void
+evaluate(
+    // inputs: Ax packed matrix (mx rows, nc_x cols, kx+1 non-zeros per row)
+    const double *Ax_a, const int64_t *Ax_offset, int64_t mx, int64_t nc_x, int kx,
+    // inputs: Ay packed matrix (my rows, nc_y cols, ky+1 non-zeros per row)
+    const double *Ay_a, const int64_t *Ay_offset, int64_t my, int64_t nc_y, int ky,
+    // inputs: C coefficient matrix (nc_x rows x nc_y cols), row-major
+    const double *C,
+    // output: Z surface values (mx rows x my cols), row-major
+    // Z = Ax @ C.T @ Ay.T
+    double *Z
+);
+
+
+void
+_solve_2d_fitpack(
+    // inputs: Ax packed matrix (mx rows, nc_x cols, kx+1 non-zeros per row)
+    const double *Ax_a, const int64_t *Ax_offset, int64_t mx, int64_t nc_x,
+    // inputs: Ay packed matrix (my rows, nc_y cols, ky+1 non-zeros per row)
+    const double *Ay_a, const int64_t *Ay_offset, int64_t my, int64_t nc_y,
+    // inputs: Q matrix (mx rows x my cols, row-major) - RHS data grid
+    double *Q, int64_t mq0, int64_t mq1,
+    // inputs: smoothing parameter (p == -1 for interpolation, p > 0 for smoothing)
+    double p,
+    // inputs: spline degrees and knot vectors
+    int kx, const double *tx, int64_t len_tx,
+    int ky, const double *ty, int64_t len_ty,
+    // inputs: sample coordinates
+    const double *x_x, int64_t mx_x,
+    const double *x_y, int64_t my_x,
+    // inputs: original data grid for residual evaluation
+    const double *z, int64_t mz0, int64_t mz1,
+    // inputs: penalty matrices (Dx and Dy packed format)
+    const double *Dx_a, const int64_t *Dx_offset, int64_t mx_dx, int64_t nc_dx,
+    const double *Dy_a, const int64_t *Dy_offset, int64_t my_dy, int64_t nc_dy,
+    // outputs: C coefficient matrix (nc_x rows x nc_y cols, row-major)
+    double *C,
+    // output: fp residual sum of squares
+    double *fp
+);
+
+
+void
 _regrid_python_fitpack(
     const double *x,
     int64_t mx,
