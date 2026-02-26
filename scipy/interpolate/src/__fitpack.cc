@@ -2216,7 +2216,6 @@ _solve_2d_fitpack(
     // Pad Q with zeros if penalty rows were added to Ax_aug
     std::vector<double> Q_padded_x;
     double *Qx = Q;
-    int64_t Q_rows_x = mq0;
 
     if (p != -1.0) {
         Q_padded_x.resize((mq0 + mx_dx) * mq1, 0.0);
@@ -2227,7 +2226,6 @@ _solve_2d_fitpack(
             }
         }
         Qx = Q_padded_x.data();
-        Q_rows_x = mq0 + mx_dx;
     }
 
     // Perform QR reduction on x-augmented system
@@ -2269,7 +2267,6 @@ _solve_2d_fitpack(
     // Pad T_T with zeros if penalty rows were added to Ay_aug
     std::vector<double> Q_padded_y;
     double *Qy = T_T.data();
-    int64_t Q_rows_y = mq1;
 
     if (p != -1.0) {
         Q_padded_y.resize((mq1 + my_dy) * nc_x, 0.0);
@@ -2280,7 +2277,6 @@ _solve_2d_fitpack(
             }
         }
         Qy = Q_padded_y.data();
-        Q_rows_y = mq1 + my_dy;
     }
 
     // Perform QR reduction on y-augmented system
@@ -2345,6 +2341,14 @@ _regrid_python_fitpack(
     const double *z,
     int64_t mz0,
     int64_t mz1,
+    const double *tx,
+    int64_t nminx,
+    int64_t nmaxx,
+    int64_t nestx,
+    const double *ty,
+    int64_t nminy,
+    int64_t nmaxy,
+    int64_t nesty,
     int kx,
     int ky,
     double s,
@@ -2358,6 +2362,14 @@ _regrid_python_fitpack(
     (void)z;
     (void)mz0;
     (void)mz1;
+    (void)tx;
+    (void)nminx;
+    (void)nmaxx;
+    (void)nestx;
+    (void)ty;
+    (void)nminy;
+    (void)nmaxy;
+    (void)nesty;
     (void)kx;
     (void)ky;
     (void)s;

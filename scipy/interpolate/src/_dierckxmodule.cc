@@ -87,22 +87,34 @@ py_fpknot(PyObject* self, PyObject *args)
 
 
 /*
- * def _regrid_python_fitpack(x, y, z, *, kx=3, ky=3, s=0.0, maxit=50):
+ * def _regrid_python_fitpack(
+ *     x, y, z, tx=None, nminx=0, nmaxx=0, nestx=0,
+ *     ty=None, nminy=0, nmaxy=0, nesty=0,
+ *     *, kx=3, ky=3, s=0.0, maxit=50
+ * ):
  */
 static PyObject*
 py_regrid_python_fitpack(PyObject* self, PyObject *args, PyObject *kwargs)
 {
     PyObject *py_x = NULL, *py_y = NULL, *py_z = NULL;
+    PyObject *py_tx = Py_None, *py_ty = Py_None;
+    Py_ssize_t nminx = 0, nmaxx = 0, nestx = 0;
+    Py_ssize_t nminy = 0, nmaxy = 0, nesty = 0;
     int kx = 3, ky = 3, maxit = 50;
     double s = 0.0;
 
     const char *kwlist[] = {
-        "x", "y", "z", "kx", "ky", "s", "maxit", NULL
+        "x", "y", "z",
+        "tx", "nminx", "nmaxx", "nestx",
+        "ty", "nminy", "nmaxy", "nesty",
+        "kx", "ky", "s", "maxit", NULL
     };
 
     if(!PyArg_ParseTupleAndKeywords(
-            args, kwargs, "OOO|iidi", const_cast<char **>(kwlist),
+            args, kwargs, "OOO|OnnnOnnniidi", const_cast<char **>(kwlist),
             &py_x, &py_y, &py_z,
+            &py_tx, &nminx, &nmaxx, &nestx,
+            &py_ty, &nminy, &nmaxy, &nesty,
             &kx, &ky, &s, &maxit)) {
         return NULL;
     }
@@ -113,15 +125,29 @@ py_regrid_python_fitpack(PyObject* self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
+    if (py_tx != Py_None && !check_array(py_tx, 1, NPY_DOUBLE)) {
+        return NULL;
+    }
+
+    if (py_ty != Py_None && !check_array(py_ty, 1, NPY_DOUBLE)) {
+        return NULL;
+    }
+
     PyArrayObject *a_x = (PyArrayObject *)py_x;
     PyArrayObject *a_y = (PyArrayObject *)py_y;
     PyArrayObject *a_z = (PyArrayObject *)py_z;
+    PyArrayObject *a_tx = (py_tx == Py_None) ? NULL : (PyArrayObject *)py_tx;
+    PyArrayObject *a_ty = (py_ty == Py_None) ? NULL : (PyArrayObject *)py_ty;
 
     try {
         fitpack::_regrid_python_fitpack(
             static_cast<const double *>(PyArray_DATA(a_x)), PyArray_DIM(a_x, 0),
             static_cast<const double *>(PyArray_DATA(a_y)), PyArray_DIM(a_y, 0),
             static_cast<const double *>(PyArray_DATA(a_z)), PyArray_DIM(a_z, 0), PyArray_DIM(a_z, 1),
+            (a_tx == NULL) ? nullptr : static_cast<const double *>(PyArray_DATA(a_tx)),
+            static_cast<int64_t>(nminx), static_cast<int64_t>(nmaxx), static_cast<int64_t>(nestx),
+            (a_ty == NULL) ? nullptr : static_cast<const double *>(PyArray_DATA(a_ty)),
+            static_cast<int64_t>(nminy), static_cast<int64_t>(nmaxy), static_cast<int64_t>(nesty),
             kx, ky, s, maxit
         );
         Py_RETURN_NONE;
