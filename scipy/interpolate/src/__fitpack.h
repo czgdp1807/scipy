@@ -285,6 +285,22 @@ fpknot(const double *x_ptr, int64_t m,
 
 
 /*
+ * Insert a newly selected knot into a knot vector.
+ *
+ * This mirrors Python add_knot:
+ *   new_knot = fpknot(x, t, k, residuals)
+ *   idx_t = searchsorted(t, new_knot)
+ *   t_new = r_[t[:idx_t], new_knot, t[idx_t:]]
+ */
+void
+add_knot(const double *x_ptr, int64_t m,
+      const double *t_ptr, int64_t len_t,
+      int k,
+      const double *residuals_ptr,
+      double *t_new_ptr);
+
+
+/*
  * Evaluate the spline function
  */
 

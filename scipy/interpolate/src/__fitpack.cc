@@ -1171,6 +1171,33 @@ fpknot(const double *x_ptr, int64_t m,
 }
 
 
+void
+add_knot(const double *x_ptr, int64_t m,
+         const double *t_ptr, int64_t len_t,
+         int k,
+         const double *residuals_ptr,
+         double *t_new_ptr)
+{
+    double new_knot = fpknot(x_ptr, m, t_ptr, len_t, k, residuals_ptr);
+
+    auto t_begin = t_ptr;
+    auto t_end = t_ptr + len_t;
+    int64_t idx_t = static_cast<int64_t>(std::lower_bound(t_begin, t_end, new_knot) - t_begin);
+
+    std::vector<double> t_old(t_ptr, t_ptr + len_t);
+
+    for (int64_t i = 0; i < idx_t; ++i) {
+        t_new_ptr[i] = t_old[i];
+    }
+
+    t_new_ptr[idx_t] = new_knot;
+
+    for (int64_t i = idx_t; i < len_t; ++i) {
+        t_new_ptr[i + 1] = t_old[i];
+    }
+}
+
+
 /*
  * Evaluate the spline function
 */
