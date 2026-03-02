@@ -313,6 +313,27 @@ add_knot(const double *x_ptr, int64_t m,
 
 
 /*
+ * Knot-growth helper for non-periodic regridding.
+ *
+ * Mirrors Python _add_knots: updates nplus using FITPACK heuristic,
+ * adds up to nplus knots via add_knot, and handles nmax/nest stop criteria.
+ *
+ * Writes the resulting knot vector to t_new_ptr and returns updated nplus.
+ */
+int64_t
+_add_knots(const double *x_ptr, int64_t m,
+         int k,
+         double s,
+         const double *t_ptr, int64_t len_t,
+         int64_t nmin, int64_t nmax,
+         int64_t nest,
+         double fp, double fpold,
+         const double *residuals_ptr,
+         int64_t nplus,
+         double *t_new_ptr);
+
+
+/*
  * Evaluate the spline function
  */
 

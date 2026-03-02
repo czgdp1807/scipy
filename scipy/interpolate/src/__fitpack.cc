@@ -1242,6 +1242,72 @@ add_knot(const double *x_ptr, int64_t m,
 }
 
 
+int64_t
+_add_knots(const double *x_ptr, int64_t m,
+           int k,
+           double s,
+           const double *t_ptr, int64_t len_t,
+           int64_t nmin, int64_t nmax,
+           int64_t nest,
+           double fp, double fpold,
+           const double *residuals_ptr,
+           int64_t nplus,
+           double *t_new_ptr)
+{
+    const double tol = 0.001;
+    const double acc = s * tol;
+    const double fpms = fp - s;
+
+    int64_t n = len_t;
+    int64_t nplus_new = nplus;
+
+    if (n == nmin) {
+        nplus_new = 1;
+    }
+    else {
+        double delta = fpold - fp;
+        int64_t npl1 = (delta > acc)
+            ? static_cast<int64_t>(nplus_new * fpms / delta)
+            : nplus_new * 2;
+
+        int64_t lower = std::max<int64_t>(1, nplus_new / 2);
+        nplus_new = std::min<int64_t>(nplus_new * 2, std::max<int64_t>({npl1, lower, static_cast<int64_t>(1)}));
+    }
+
+    std::vector<double> t_curr(t_ptr, t_ptr + len_t);
+
+    for (int64_t j = 0; j < nplus_new; ++j) {
+        std::vector<double> t_next(n + 1);
+        add_knot(x_ptr, m, t_curr.data(), n, k, residuals_ptr, t_next.data());
+        t_curr.swap(t_next);
+
+        n = static_cast<int64_t>(t_curr.size());
+
+        if (n >= nmax) {
+            double *t_nak = nullptr;
+            _not_a_knot(x_ptr, m, k, t_nak);
+            for (int64_t i = 0; i < nmax; ++i) {
+                t_new_ptr[i] = t_nak[i];
+            }
+            delete[] t_nak;
+            return nplus_new;
+        }
+
+        if (n >= nest) {
+            for (int64_t i = 0; i < n; ++i) {
+                t_new_ptr[i] = t_curr[i];
+            }
+            return nplus_new;
+        }
+    }
+
+    for (int64_t i = 0; i < n; ++i) {
+        t_new_ptr[i] = t_curr[i];
+    }
+    return nplus_new;
+}
+
+
 /*
  * Evaluate the spline function
 */
