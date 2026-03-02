@@ -1172,6 +1172,50 @@ fpknot(const double *x_ptr, int64_t m,
 
 
 void
+_not_a_knot(const double *x_ptr, int64_t m,
+            int k, double *&t_ptr)
+{
+    auto x = ConstRealArray1D(x_ptr, m);
+
+    int k2;
+    std::vector<double> t_mid;
+    if (k % 2 == 1) {
+        k2 = (k + 1) / 2;
+        t_mid.assign(x_ptr, x_ptr + m);
+    }
+    else {
+        k2 = k / 2;
+        t_mid.resize(m - 1);
+        for (int64_t i = 0; i < m - 1; ++i) {
+            t_mid[i] = 0.5 * (x(i + 1) + x(i));
+        }
+    }
+
+    int64_t start = k2;
+    int64_t stop = static_cast<int64_t>(t_mid.size()) - k2;
+    if (stop < start) {
+        throw std::invalid_argument("_not_a_knot: invalid inputs produced empty interior knot span.");
+    }
+
+    int64_t interior_len = stop - start;
+    int64_t len_t = m + k + 1;
+
+    t_ptr = new double[len_t];
+
+    int64_t out_i = 0;
+    for (int i = 0; i < k + 1; ++i) {
+        t_ptr[out_i++] = x(0);
+    }
+    for (int64_t i = 0; i < interior_len; ++i) {
+        t_ptr[out_i++] = t_mid[start + i];
+    }
+    for (int i = 0; i < k + 1; ++i) {
+        t_ptr[out_i++] = x(m - 1);
+    }
+}
+
+
+void
 add_knot(const double *x_ptr, int64_t m,
          const double *t_ptr, int64_t len_t,
          int k,

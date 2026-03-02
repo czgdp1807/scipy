@@ -285,6 +285,18 @@ fpknot(const double *x_ptr, int64_t m,
 
 
 /*
+ * Construct not-a-knot boundary-condition knot vector.
+ *
+ * Output pointer `t_ptr` is allocated inside this routine with size (m + k + 1).
+ * Caller owns the memory and is responsible for freeing it.
+ */
+void
+_not_a_knot(const double *x_ptr, int64_t m,
+         int k,
+         double *&t_ptr);
+
+
+/*
  * Insert a newly selected knot into a knot vector.
  *
  * This mirrors Python add_knot:
