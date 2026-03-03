@@ -983,60 +983,20 @@ def _regrid_python_fitpack(
     tx, nestx, nminx, nmaxx = _initialise_knots(x_fit.size, xb, xe, kx, nest=nestx)
     ty, nesty, nminy, nmaxy = _initialise_knots(y_fit.size, yb, ye, ky, nest=nesty)
 
-    fpold = None
-    last_axis = "y"
-    mpm = len(x) + len(y)
-    fp0 = None
-    nplusx = None
-    nplusy = None
+    _dierckx._regrid_python_fitpack(
+        x_fit, y_fit, Z_fit,
+        tx=tx, nminx=nminx, nmaxx=nmaxx, nestx=nestx,
+        ty=ty, nminy=nminy, nmaxy=nmaxy, nesty=nesty,
+        kx=kx, ky=ky, s=s, maxit=maxit
+    )
 
-    # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L51-L300
-    for _ in range(mpm):
-
-        (Ax, Ay, Q) = _build_design_matrices(
-             x_fit, y_fit, Z, tx, ty, kx, ky)
-        C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
-                                    kx, tx, x_fit,
-                                    ky, ty, y_fit,
-                                    Z_fit)
-
-        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L190
-        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L224
-        if len(tx) == nminx and len(ty) == nminy:
-            fp0 = fp
-
-        if fp < s:
-            break
-
-        # Note: We call PackedMatrix.tocsr here because matrix multiplication
-        # with the packed banded format (returned by _dierckx.data_matrix)
-        # is not implemented. PackedMatrix.tocsr returns the design matrix,
-        # in CSR format, that supports standard @ operations for residual
-        # evaluation and diagnostics.
-        _Ax = Ax.tocsr(kx, x_fit.shape[0], len(tx))
-        _Ay = Ay.tocsr(ky, y_fit.shape[0], len(ty))
-
-
-        Z0  = _Ax @ C0 @ _Ay.T
-        R = Z_fit - Z0
-
-        # https://github.com/scipy/scipy/blob/v1.16.2/scipy/interpolate/fitpack/fpregr.f#L265-L295
-        if last_axis == "y":
-            tx, nplusx = _add_knots(
-                x_fit, kx, s, tx, nmin=nminx, nmax=nmaxx,
-                nest=nestx, fp=fp, fpold=fpold,
-                residuals=np.sum(R**2, axis=1),
-                nplus=nplusx)
-            last_axis = "x"
-        else:
-            ty, nplusy = _add_knots(
-                y_fit, ky, s, ty, nmin=nminy, nmax=nmaxy,
-                nest=nesty, fp=fp, fpold=fpold,
-                residuals=np.sum(R**2, axis=0),
-                nplus=nplusy)
-            last_axis = "y"
-
-        fpold = fp
+    (Ax, Ay, Q) = _build_design_matrices(
+         x_fit, y_fit, Z, tx, ty, kx, ky)
+    C0, fp  = _solve_2d_fitpack(Ax, Ay, Q, p,
+                                kx, tx, x_fit,
+                                ky, ty, y_fit,
+                                Z_fit)
+    fp0 = fp if (len(tx) == nminx and len(ty) == nminy) else None
 
     if len(tx) == nminx and len(ty) == nminy:
         return return_NdBSpline(fp, (tx, ty, C0), (kx, ky))
