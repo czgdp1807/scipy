@@ -2492,25 +2492,175 @@ _regrid_python_fitpack(
     int maxit
 )
 {
-    (void)x;
-    (void)mx;
-    (void)y;
-    (void)my;
-    (void)z;
-    (void)mz0;
-    (void)mz1;
-    (void)tx;
-    (void)nminx;
-    (void)nmaxx;
-    (void)nestx;
-    (void)ty;
-    (void)nminy;
-    (void)nmaxy;
-    (void)nesty;
-    (void)kx;
-    (void)ky;
-    (void)s;
     (void)maxit;
+
+    if (mx <= 0 || my <= 0) {
+        throw std::invalid_argument("_regrid_python_fitpack: x and y must be non-empty.");
+    }
+    if (mz0 != mx || mz1 != my) {
+        throw std::invalid_argument("_regrid_python_fitpack: z shape must be (len(x), len(y)).");
+    }
+    if (tx == nullptr || ty == nullptr) {
+        throw std::invalid_argument("_regrid_python_fitpack: tx and ty must not be null.");
+    }
+
+    double p = -1.0;
+    std::vector<double> tx_curr(tx, tx + nminx);
+    std::vector<double> ty_curr(ty, ty + nminy);
+
+    std::vector<double> tx_next(std::max<int64_t>(nmaxx, nestx) + 1);
+    std::vector<double> ty_next(std::max<int64_t>(nmaxy, nesty) + 1);
+
+    double fpold = 0.0;
+    bool has_fpold = false;
+    double fp0 = 0.0;
+    bool last_axis_y = true;
+
+    int64_t nplusx = 1;
+    int64_t nplusy = 1;
+
+    int64_t mpm = mx + my;
+    for (int64_t iter = 0; iter < mpm; ++iter) {
+        int64_t len_tx = static_cast<int64_t>(tx_curr.size());
+        int64_t len_ty = static_cast<int64_t>(ty_curr.size());
+
+        std::vector<double> Ax_a(mx * (kx + 1));
+        std::vector<int64_t> Ax_offset(mx);
+        int64_t Ax_nc = 0;
+
+        std::vector<double> Ay_a(my * (ky + 1));
+        std::vector<int64_t> Ay_offset(my);
+        int64_t Ay_nc = 0;
+
+        std::vector<double> Q(mx * my);
+
+        _build_design_matrices(
+            x, mx,
+            y, my,
+            z, mz0, mz1,
+            tx_curr.data(), len_tx,
+            ty_curr.data(), len_ty,
+            kx, ky,
+            Ax_a.data(), Ax_offset.data(), &Ax_nc,
+            Ay_a.data(), Ay_offset.data(), &Ay_nc,
+            Q.data()
+        );
+
+        std::vector<double> C0(Ax_nc * Ay_nc);
+        double fp = 0.0;
+
+        _solve_2d_fitpack(
+            Ax_a.data(), Ax_offset.data(), mx, Ax_nc,
+            Ay_a.data(), Ay_offset.data(), my, Ay_nc,
+            Q.data(), mx, my,
+            p,
+            kx, tx_curr.data(), len_tx,
+            ky, ty_curr.data(), len_ty,
+            x, mx,
+            y, my,
+            z, mz0, mz1,
+            nullptr, nullptr, 0, 0,
+            nullptr, nullptr, 0, 0,
+            C0.data(),
+            &fp
+        );
+
+        if (len_tx == nminx && len_ty == nminy) {
+            fp0 = fp;
+            (void)fp0;
+        }
+
+        if (fp < s) {
+            break;
+        }
+
+        std::vector<double> Z0(mx * my);
+        evaluate(
+            Ax_a.data(), Ax_offset.data(), mx, Ax_nc, kx,
+            Ay_a.data(), Ay_offset.data(), my, Ay_nc, ky,
+            C0.data(),
+            Z0.data()
+        );
+
+        std::vector<double> res_x(mx, 0.0);
+        std::vector<double> res_y(my, 0.0);
+        for (int64_t i = 0; i < mx; ++i) {
+            for (int64_t j = 0; j < my; ++j) {
+                double r = z[i * my + j] - Z0[i * my + j];
+                double rr = r * r;
+                res_x[i] += rr;
+                res_y[j] += rr;
+            }
+        }
+
+        if (last_axis_y) {
+            double fpold_arg = has_fpold ? fpold : fp;
+            int64_t nplus_new = _add_knots(
+                x, mx,
+                kx,
+                s,
+                tx_curr.data(), len_tx,
+                nminx, nmaxx,
+                nestx,
+                fp, fpold_arg,
+                res_x.data(),
+                nplusx,
+                tx_next.data()
+            );
+
+            int64_t len_new = len_tx;
+            for (int64_t j = 0; j < nplus_new; ++j) {
+                ++len_new;
+                if (len_new >= nmaxx) {
+                    len_new = nmaxx;
+                    break;
+                }
+                if (len_new >= nestx) {
+                    len_new = nestx;
+                    break;
+                }
+            }
+
+            tx_curr.assign(tx_next.begin(), tx_next.begin() + len_new);
+            nplusx = nplus_new;
+            last_axis_y = false;
+        }
+        else {
+            double fpold_arg = has_fpold ? fpold : fp;
+            int64_t nplus_new = _add_knots(
+                y, my,
+                ky,
+                s,
+                ty_curr.data(), len_ty,
+                nminy, nmaxy,
+                nesty,
+                fp, fpold_arg,
+                res_y.data(),
+                nplusy,
+                ty_next.data()
+            );
+
+            int64_t len_new = len_ty;
+            for (int64_t j = 0; j < nplus_new; ++j) {
+                ++len_new;
+                if (len_new >= nmaxy) {
+                    len_new = nmaxy;
+                    break;
+                }
+                if (len_new >= nesty) {
+                    len_new = nesty;
+                    break;
+                }
+            }
+
+            ty_curr.assign(ty_next.begin(), ty_next.begin() + len_new);
+            nplusy = nplus_new;
+            last_axis_y = true;
+        }
+
+        fpold = fp;
+        has_fpold = true;
+    }
 }
 
 
