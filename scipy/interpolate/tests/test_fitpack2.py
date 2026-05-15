@@ -1403,26 +1403,28 @@ class TestRectBivariateSpline:
 
         return x, y, z.astype(np.float64)
 
+    def RectBivariateSplineEval(spl, x, y):
+        return spl(x, y)
+
     @pytest.mark.slow()
     @pytest.mark.parametrize('shape', [(350, 850), (2000, 170)])
     @pytest.mark.parametrize('s_tols', [(0, 1e-12, 1e-7),
                                         (1, 7e-3, 1e-4),
                                         (3, 2e-2, 1e-4)])
-    def test_spline_large_2d(self, shape, s_tols):
+    @pytest.mark.parametrize("spl_apis", [(RectBivariateSpline, RectBivariateSplineEval),
+                                          (_regrid, _ndbspline_call_like_bivariate)])
+    def test_spline_large_2d(self, shape, s_tols, spl_apis):
         # Reference - https://github.com/scipy/scipy/issues/17787
         nx, ny = shape
         s, atol, rtol = s_tols
         x, y, z = self._sample_large_2d_data(nx, ny)
 
-        spl = RectBivariateSpline(x, y, z, s=s)
-        z_spl = spl(x, y)
+        spl_construct, spl_eval = spl_apis
+
+        spl = spl_construct(x, y, z, s=s)
+        z_spl = spl_eval(spl, x, y)
         assert(not np.isnan(z_spl).any())
         xp_assert_close(z_spl, z, atol=atol, rtol=rtol)
-
-        spl_custom = _regrid(x, y, z, s=s)
-        z_spl_custom = _ndbspline_call_like_bivariate(spl_custom, x, y)
-        assert(not np.isnan(z_spl_custom).any())
-        xp_assert_close(z_spl_custom, z, atol=atol, rtol=rtol)
 
     @pytest.mark.xslow()
     @pytest.mark.skipif(sys.platform == "win32", reason="Fails intermittently "
